@@ -3,6 +3,7 @@ from discord.ext import commands
 import requests
 import os
 import asyncio
+import webserver
 
 discord_gem_hunter = os.getenv("DISCORD_BOT")
 
@@ -130,4 +131,5 @@ async def gemhunter(ctx):
     await ctx.send(embed=embed)
 
 
+webserver.keep_alive()
 bot.run(discord_gem_hunter)
