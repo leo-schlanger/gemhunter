@@ -2,7 +2,6 @@ import discord
 import logging
 from discord import app_commands
 from utils.dexscreener import search_tokens_dexscreener
-from views.token_paginator import TokenPaginatorView
 
 class ReactCommand(app_commands.Command):
     def __init__(self):
@@ -15,7 +14,6 @@ class ReactCommand(app_commands.Command):
     @app_commands.describe(symbol="Token symbol or name")
     async def react(self, interaction: discord.Interaction, symbol: str):
         logging.info(f"[REACT] Searching Dexscreener for: {symbol}")
-
         try:
             await interaction.response.defer(thinking=True)
         except:
@@ -31,25 +29,49 @@ class ReactCommand(app_commands.Command):
             if key not in seen:
                 seen.add(key)
                 tokens.append(t)
+            if len(tokens) == 10:
+                break
 
         if not tokens:
             await interaction.followup.send(f"❌ No tokens found for `{symbol}`.")
             return
 
-        # Se só um token, continua direto
         if len(tokens) == 1:
             return await self.continue_react(interaction, tokens[0])
 
-        # Caso contrário, abre paginador
-        view = TokenPaginatorView(tokens, interaction, callback=self.continue_react)
-        await view.start()
+        # Menu simples com até 10 tokens
+        embed = discord.Embed(
+            title=f"🎯 Tokens found for '{symbol}'",
+            description="\n".join([
+                f"{i+1}. `{t['symbol']}` — {t['name']} ({t['chain'].capitalize()})"
+                for i, t in enumerate(tokens)
+            ]),
+            color=0xff9900
+        )
+        embed.set_footer(text="Reply with a number (1–10) to react.")
+        await interaction.followup.send(embed=embed)
+
+        def check(m):
+            return (
+                m.author.id == interaction.user.id
+                and m.channel == interaction.channel
+                and m.content.isdigit()
+                and 1 <= int(m.content) <= len(tokens)
+            )
+
+        try:
+            msg = await interaction.client.wait_for("message", timeout=30.0, check=check)
+            selected_index = int(msg.content) - 1
+            await self.continue_react(interaction, tokens[selected_index])
+        except:
+            await interaction.followup.send("⏱️ Timed out or invalid input. Cancelled.")
+            return
 
     async def continue_react(self, interaction: discord.Interaction, token):
         sym = token["symbol"].upper()
         liq = token.get("liquidity", {}).get("usd")
         fdv = token.get("fdv")
 
-        # Risco baseado em liquidez e FDV (corrigido)
         if liq is not None and liq >= 1_000_000 or fdv is not None and fdv >= 10_000_000:
             emoji = "🧠"
             msg = f"{emoji} {sym}? That’s a f*cking blue chip, anon! Ape in!"
