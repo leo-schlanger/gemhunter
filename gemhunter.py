@@ -35,6 +35,12 @@ NETWORK_CHOICES = [
     app_commands.Choice(name="all", value="all")
 ]
 
+def parse_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
 async def prompt_token_selection(interaction, symbol, options):
     msg = f"⚠️ Found multiple tokens with symbol `{symbol}`:\n"
     for i, token in enumerate(options):
@@ -76,18 +82,18 @@ class GemHunter(app_commands.Group):
             symbol = attr.get("symbol", "--")
             net_label = NETWORK_LABELS.get(net, net)
 
-            price = attr.get("price_usd", "N/A")
-            gt_score = attr.get("gt_score")
-            liq = attr.get("total_reserve_in_usd")
-            fdv = attr.get("fdv_usd")
-            volume = attr.get("volume_usd", {}).get("h24")
+            price = attr.get("price_usd") or attr.get("market_data", {}).get("price_usd")
+            gt_score = parse_float(attr.get("gt_score"))
+            liq = attr.get("total_reserve_in_usd") or attr.get("market_data", {}).get("total_reserve_in_usd")
+            fdv = attr.get("fdv_usd") or attr.get("market_data", {}).get("fdv_usd")
+            volume = attr.get("volume_usd", {}).get("h24") or attr.get("market_data", {}).get("volume_usd", {}).get("h24")
 
             score_emoji = "🧠" if gt_score and gt_score >= 70 else "🧪" if gt_score and gt_score >= 30 else "❌" if gt_score else "❓"
             risk_emoji = "🔴" if liq and float(liq) < 1000 or fdv and float(fdv) > 10_000_000 else "🟡" if liq and float(liq) < 10_000 or fdv and float(fdv) > 1_000_000 else "🟢"
 
             rows.append(
                 f"**{idx}. 💎 {name} ({symbol})** {risk_emoji} {score_emoji} | 🌐 {net_label}\n"
-                f"💵 {price} | 💧 {liq or 'N/A'} | 🧠 {fdv or 'N/A'}\n"
+                f"💵 {price or 'N/A'} | 💧 {liq or 'N/A'} | 🧠 {fdv or 'N/A'}\n"
                 f"📊 Volume 24h: {volume or 'N/A'}\n"
             )
 
@@ -108,21 +114,8 @@ class GemHunter(app_commands.Group):
         except discord.NotFound:
             return
 
-        response = requests.get("https://api.coingecko.com/api/v3/coins/list")
-        try:
-            token_list = response.json()
-            if isinstance(token_list, list):
-                pass  # OK
-            elif isinstance(token_list, dict) and "coins" in token_list:
-                token_list = token_list["coins"]
-            else:
-                token_list = []
-        except Exception as e:
-            print(f"❌ Failed to parse token list: {e}")
-            token_list = []
-        if isinstance(token_list, dict):
-            token_list = token_list.get("coins", [])  # fallback if wrapped in 'coins'
-        matches = [t for t in token_list if t.get("symbol", "").lower() == symbol.lower()]
+        token_list = requests.get("https://api.coingecko.com/api/v3/coins/list").json()
+        matches = [t for t in token_list if isinstance(t, dict) and t.get("symbol", "").lower() == symbol.lower()]
 
         if not matches:
             await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found.")
@@ -155,7 +148,7 @@ class GemHunter(app_commands.Group):
             return
 
         token_list = requests.get("https://api.coingecko.com/api/v3/coins/list").json()
-        matches = [t for t in token_list if t.get("symbol", "").lower() == symbol.lower()]
+        matches = [t for t in token_list if isinstance(t, dict) and t.get("symbol", "").lower() == symbol.lower()]
 
         if not matches:
             await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found.")
@@ -195,4 +188,5 @@ bot.tree.add_command(GemHunter())
 async def on_ready():
     print(f"🟢 Logged in as {bot.user}")
     await bot.tree.sync()
+
 bot.run(discord_gem_hunter)
