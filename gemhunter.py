@@ -137,7 +137,12 @@ class GemHunter(app_commands.Group):
     @app_commands.command(name="react", description="Give a fun crypto reaction based on CoinGecko Score")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def react(self, interaction: discord.Interaction, symbol: str):
-        await interaction.response.defer(thinking=True)
+        try:
+            await interaction.response.defer(thinking=True)
+        except discord.NotFound:
+            print("⚠️ Interaction expired before defer could be sent.")
+            return
+
         stats = await fetch_coingecko_coin(symbol)
         if not stats or stats.get("score") is None:
             await interaction.followup.send(content=f"❌ Token '{symbol.upper()}' not found or has no score.")
@@ -155,7 +160,12 @@ class GemHunter(app_commands.Group):
     @app_commands.command(name="find", description="Do a deep dive on a specific token")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def find(self, interaction: discord.Interaction, symbol: str):
-        await interaction.response.defer(thinking=True)
+        try:
+            await interaction.response.defer(thinking=True)
+        except discord.NotFound:
+            print("⚠️ Interaction expired before defer could be sent.")
+            return
+
         stats = await fetch_coingecko_coin(symbol)
         if not stats:
             await interaction.followup.send(content=f"❌ Token '{symbol.upper()}' not found.")
