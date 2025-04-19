@@ -52,6 +52,10 @@ async def fetch_token_stats(network, address):
                 "fdv": parse_float(attr.get("fdv_usd")),
                 "liq": parse_float(attr.get("total_reserve_in_usd")),
                 "volume_24h": parse_float(attr.get("volume_usd", {}).get("h24")),
+                "gt_score": parse_float(attr.get("gt_score")),
+                "symbol": attr.get("symbol"),
+                "name": attr.get("name"),
+                "address": attr.get("address")
             }
     except Exception as e:
         print(f"❌ Error fetching token stats: {e}")
@@ -60,8 +64,12 @@ async def fetch_token_stats(network, address):
 async def prompt_token_selection(interaction, symbol, options):
     msg = f"⚠️ Found multiple tokens with symbol `{symbol}`:\n"
     for i, token in enumerate(options):
-        msg += f"**{i+1}.** {token['attributes'].get('name')} — `{token['id']}`\n"
+        name = token.get("name") or token.get("attributes", {}).get("name", "Unknown")
+        token_id = token.get("id", "N/A")
+        msg += f"**{i+1}.** {name} — `{token_id}`\n"
     msg += f"\nPlease reply with the number of your choice (1–{len(options)}). You have 30 seconds."
+
+    await interaction.followup.send(msg)
 
     def check(m):
         return m.author == interaction.user and m.channel == interaction.channel
@@ -85,7 +93,7 @@ class GemHunter(app_commands.Group):
     async def matrix(self, interaction: discord.Interaction, network: app_commands.Choice[str]):
         await interaction.response.defer()
         try:
-            data = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated", timeout=10).json()
+            data = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated?limit=100", timeout=10).json()
         except:
             await interaction.followup.send("❌ Failed to fetch token data.")
             return
@@ -152,48 +160,32 @@ class GemHunter(app_commands.Group):
     @app_commands.command(name="react", description="Give a fun crypto reaction based on GT Score")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def react(self, interaction: discord.Interaction, symbol: str):
-        try:
-            await interaction.response.defer()
-        except discord.NotFound:
-            return
+        await interaction.response.defer()
+        data = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated?limit=100").json()
+        tokens = data.get("data", [])
+        matches = [t for t in tokens if t.get("attributes", {}).get("symbol", "").lower() == symbol.lower()]
 
-        response = requests.get("https://api.coingecko.com/api/v3/coins/list")
-        try:
-            token_list = response.json()
-            if isinstance(token_list, list):
-                pass  # OK
-            elif isinstance(token_list, dict) and "coins" in token_list:
-                token_list = token_list["coins"]
-            else:
-                token_list = []
-        except Exception as e:
-            print(f"❌ Failed to parse token list: {e}")
-            token_list = []
-        if isinstance(token_list, dict):
-            token_list = token_list.get("coins", [])  # fallback if wrapped in 'coins'
-        matches = [t for t in token_list if t.get("symbol", "").lower() == symbol.lower()]
-        
         if not matches:
-            await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found in recent tokens.")
+            await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found.")
             return
 
         selected = matches[0] if len(matches) == 1 else await prompt_token_selection(interaction, symbol, matches)
         if not selected:
             return
 
-        attr = selected["attributes"]
-
-        address = attr.get("address")
+        attr = selected.get("attributes", {})
         network_key = selected.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
-
+        address = attr.get("address")
         stats = await fetch_token_stats(network_key, address)
-        symbol = attr.get("symbol", "--")
 
-        if stats is None:
-            msg = f"❓ No sentiment data for {symbol.upper()} yet."
-        elif stats >= 70:
+        score = stats.get("gt_score")
+        symbol = stats.get("symbol")
+
+        if score is None:
+            msg = f"❓ No GT Score available for {symbol.upper()}."
+        elif score >= 70:
             msg = f"🧠 {symbol.upper()}? That's a f*cking blue chip, anon! Ape in!"
-        elif stats >= 30:
+        elif score >= 30:
             msg = f"🧪 {symbol.upper()}? Mid-tier vibes... might moon, might rug."
         else:
             msg = f"❌ {symbol.upper()}? Total trash. Stay away."
@@ -203,42 +195,36 @@ class GemHunter(app_commands.Group):
     @app_commands.command(name="find", description="Do a deep dive on a specific token")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def find(self, interaction: discord.Interaction, symbol: str):
-        try:
-            await interaction.response.defer()
-        except discord.NotFound:
-            return
-
-        data = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated").json()
+        await interaction.response.defer()
+        data = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated?limit=100").json()
         tokens = data.get("data", [])
-        matches = [t for t in tokens if t["attributes"].get("symbol", "").lower() == symbol.lower()]
+        matches = [t for t in tokens if t.get("attributes", {}).get("symbol", "").lower() == symbol.lower()]
 
         if not matches:
-            await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found in recent tokens.")
+            await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found.")
             return
 
         selected = matches[0] if len(matches) == 1 else await prompt_token_selection(interaction, symbol, matches)
         if not selected:
             return
 
-        attr = selected["attributes"]
-        relationships = selected.get("relationships", {})
-        network_key = relationships.get("network", {}).get("data", {}).get("id", "unknown")
-        network_name = NETWORK_LABELS.get(network_key, network_key.capitalize())
+        attr = selected.get("attributes", {})
+        network_key = selected.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
         address = attr.get("address")
-        name = attr.get("name", "Unknown")
-        symbol = attr.get("symbol", "--")
+        network_name = NETWORK_LABELS.get(network_key, network_key.capitalize())
 
         stats = await fetch_token_stats(network_key, address)
 
-        emoji = "🧠" if stats and stats >= 70 else "🧪" if stats and stats >= 30 else "❌"
-        score_str = f"{emoji} {stats:.1f}" if stats is not None else "❓ Unknown"
+        score = stats.get("gt_score")
+        emoji = "🧠" if score and score >= 70 else "🧪" if score and score >= 30 else "❌"
+        score_str = f"{emoji} {score:.1f}" if score is not None else "❓ Unknown"
 
-        price = f"${attr['price']:.6f}" if attr.get("price") else "N/A"
-        liq_val = f"${attr['liq']:,.0f}" if attr.get("liq") else "N/A"
-        fdv_val = f"${attr['fdv']/1_000_000:.1f}M" if attr.get("fdv") else "N/A"
-        vol_24h = f"${attr['volume_24h']:,.0f}" if attr.get("volume_24h") else "N/A"
+        price = f"${stats['price']:.6f}" if stats.get("price") else "N/A"
+        liq_val = f"${stats['liq']:,.0f}" if stats.get("liq") else "N/A"
+        fdv_val = f"${stats['fdv']/1_000_000:.1f}M" if stats.get("fdv") else "N/A"
+        vol_24h = f"${stats['volume_24h']:,.0f}" if stats.get("volume_24h") else "N/A"
 
-        embed = discord.Embed(title=f"🔎 Deep Dive — {name} ({symbol.upper()})", color=0x0099ff)
+        embed = discord.Embed(title=f"🔎 Deep Dive — {stats.get('name', 'Unknown')} ({symbol.upper()})", color=0x0099ff)
         embed.add_field(name="GT Score", value=score_str, inline=True)
         embed.add_field(name="Network", value=network_name, inline=True)
         embed.add_field(name="Price", value=price, inline=True)
@@ -264,5 +250,4 @@ async def on_ready():
     print(f"🟢 Logged in as {bot.user}")
     await bot.tree.sync()
 
-keep_alive()
 bot.run(discord_gem_hunter)
