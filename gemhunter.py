@@ -93,7 +93,7 @@ class GemHunter(app_commands.Group):
     @app_commands.describe(network="Filter by blockchain network (or use all)")
     @app_commands.choices(network=NETWORK_CHOICES)
     async def matrix(self, interaction: discord.Interaction, network: app_commands.Choice[str]):
-        await interaction.response.defer()
+        await interaction.response.defer(thinking=True)
         tokens = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated").json().get("data", [])
         filtered = [t for t in tokens if network.value == "all" or t.get("relationships", {}).get("network", {}).get("data", {}).get("id") == network.value][:10]
 
@@ -137,7 +137,7 @@ class GemHunter(app_commands.Group):
     @app_commands.command(name="react", description="Give a fun crypto reaction based on CoinGecko Score")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def react(self, interaction: discord.Interaction, symbol: str):
-        await interaction.response.defer()
+        await interaction.response.defer(thinking=True)
         stats = await fetch_coingecko_coin(symbol)
         if not stats or stats.get("score") is None:
             await interaction.followup.send(content=f"❌ Token '{symbol.upper()}' not found or has no score.")
@@ -155,7 +155,7 @@ class GemHunter(app_commands.Group):
     @app_commands.command(name="find", description="Do a deep dive on a specific token")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def find(self, interaction: discord.Interaction, symbol: str):
-        await interaction.response.defer()
+        await interaction.response.defer(thinking=True)
         stats = await fetch_coingecko_coin(symbol)
         if not stats:
             await interaction.followup.send(content=f"❌ Token '{symbol.upper()}' not found.")
