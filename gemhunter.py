@@ -35,6 +35,26 @@ NETWORK_CHOICES = [
     app_commands.Choice(name="all", value="all")
 ]
 
+async def prompt_token_selection(interaction, symbol, options):
+    msg = f"⚠️ Found multiple tokens with symbol `{symbol}`:\n"
+    for i, token in enumerate(options):
+        msg += f"**{i+1}.** {token['name']} — `{token['id']}`\n"
+    msg += "\nPlease reply with the number of your choice (1–{0}). You have 30 seconds.".format(len(options))
+
+    await interaction.followup.send(msg)
+
+    def check(m):
+        return m.author == interaction.user and m.channel == interaction.channel
+
+    try:
+        reply = await bot.wait_for("message", timeout=30.0, check=check)
+        index = int(reply.content.strip()) - 1
+        if 0 <= index < len(options):
+            return options[index]
+    except (asyncio.TimeoutError, ValueError):
+        await interaction.followup.send("❌ Timeout or invalid selection. Operation cancelled.")
+    return None
+
 class GemHunter(app_commands.Group):
     def __init__(self):
         super().__init__(name="gemhunter", description="The ultimate gem analyzer")
@@ -88,18 +108,18 @@ class GemHunter(app_commands.Group):
         except discord.NotFound:
             return
 
-        response = requests.get("https://api.coingecko.com/api/v3/coins/list")
-        if response.status_code != 200:
-            await interaction.followup.send("❌ Failed to fetch token list from CoinGecko.")
-            return
+        token_list = requests.get("https://api.coingecko.com/api/v3/coins/list").json()
+        matches = [t for t in token_list if t.get("symbol", "").lower() == symbol.lower()]
 
-        token_list = response.json()
-        match = next((t for t in token_list if t.get('symbol', '').lower() == symbol.lower()), None)
-        if not match:
+        if not matches:
             await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found.")
             return
 
-        token_data = requests.get(f"https://api.coingecko.com/api/v3/coins/{match['id']}").json()
+        selected = matches[0] if len(matches) == 1 else await prompt_token_selection(interaction, symbol, matches)
+        if not selected:
+            return
+
+        token_data = requests.get(f"https://api.coingecko.com/api/v3/coins/{selected['id']}").json()
         sentiment = token_data.get("sentiment_votes_up_percentage")
 
         if sentiment is None:
@@ -121,18 +141,18 @@ class GemHunter(app_commands.Group):
         except discord.NotFound:
             return
 
-        response = requests.get("https://api.coingecko.com/api/v3/coins/list")
-        if response.status_code != 200:
-            await interaction.followup.send("❌ Failed to fetch token list.")
-            return
+        token_list = requests.get("https://api.coingecko.com/api/v3/coins/list").json()
+        matches = [t for t in token_list if t.get("symbol", "").lower() == symbol.lower()]
 
-        token_list = response.json()
-        match = next((t for t in token_list if t.get('symbol', '').lower() == symbol.lower()), None)
-        if not match:
+        if not matches:
             await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found.")
             return
 
-        token_data = requests.get(f"https://api.coingecko.com/api/v3/coins/{match['id']}").json()
+        selected = matches[0] if len(matches) == 1 else await prompt_token_selection(interaction, symbol, matches)
+        if not selected:
+            return
+
+        token_data = requests.get(f"https://api.coingecko.com/api/v3/coins/{selected['id']}").json()
 
         name = token_data.get("name", "Unknown")
         desc = token_data.get("description", {}).get("en", "No description.")
