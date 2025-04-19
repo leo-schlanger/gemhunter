@@ -35,6 +35,9 @@ NETWORK_CHOICES = [
     app_commands.Choice(name="all", value="all")
 ]
 
+COINGECKO_LIST_URL = "https://api.coingecko.com/api/v3/coins/list"
+COINGECKO_COIN_URL = "https://api.coingecko.com/api/v3/coins/{id}"
+
 def parse_float(value):
     try:
         return float(value)
@@ -62,6 +65,26 @@ async def fetch_token_stats(network, address):
         print(f"❌ Error fetching stats for {address}: {e}")
     return {}
 
+async def fetch_coingecko_coin(symbol: str):
+    try:
+        all_tokens = requests.get(COINGECKO_LIST_URL).json()
+        matched = next((token for token in all_tokens if token["symbol"].lower() == symbol.lower()), None)
+        if not matched:
+            return None
+        coin_data = requests.get(COINGECKO_COIN_URL.format(id=matched["id"])).json()
+        return {
+            "name": coin_data.get("name"),
+            "symbol": coin_data.get("symbol"),
+            "desc": coin_data.get("description", {}).get("en", "No description."),
+            "site": coin_data.get("links", {}).get("homepage", [None])[0],
+            "score": coin_data.get("coingecko_score"),
+            "price": coin_data.get("market_data", {}).get("current_price", {}).get("usd"),
+            "volume": coin_data.get("market_data", {}).get("total_volume", {}).get("usd"),
+            "fdv": coin_data.get("market_data", {}).get("fully_diluted_valuation", {}).get("usd")
+        }
+    except:
+        return None
+
 class GemHunter(app_commands.Group):
     def __init__(self):
         super().__init__(name="gemhunter", description="The ultimate gem analyzer")
@@ -79,6 +102,7 @@ class GemHunter(app_commands.Group):
             attr = token["attributes"]
             net = token.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
             stats = await fetch_token_stats(net, attr.get("address"))
+
             name = attr.get("name", "Unnamed")
             symbol = attr.get("symbol", "--")
             net_label = NETWORK_LABELS.get(net, net)
@@ -110,55 +134,49 @@ class GemHunter(app_commands.Group):
         embed = discord.Embed(title=f"🧠 Gem Matrix — Top 10 Tokens ({network.name})", description="\n".join(rows) + "\n\n" + legend, color=0x00ffcc)
         await interaction.followup.send(embed=embed)
 
-    @app_commands.command(name="react", description="Give a fun crypto reaction based on GT Score")
+    @app_commands.command(name="react", description="Give a fun crypto reaction based on CoinGecko Score")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def react(self, interaction: discord.Interaction, symbol: str):
         await interaction.response.defer()
-        data = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated").json().get("data", [])
-        for token in data:
-            attr = token.get("attributes", {})
-            if attr.get("symbol", "").lower() == symbol.lower():
-                score = parse_float(attr.get("gt_score"))
-                if score is None:
-                    msg = "❓ I can't even score this one. Too early, maybe?"
-                elif score >= 70:
-                    msg = f"🧠 {symbol.upper()}? That's a f*cking blue chip, anon! Ape in!"
-                elif score >= 30:
-                    msg = f"🧪 {symbol.upper()}? Meh... mid-tier stuff. Might moon, might rug."
-                else:
-                    msg = f"❌ {symbol.upper()}? Bro that's absolute sh*t. Get out before it rugs."
-                await interaction.followup.send(content=msg)
-                return
-        await interaction.followup.send(content=f"❌ Token '{symbol.upper()}' not found in recent tokens.")
+        stats = await fetch_coingecko_coin(symbol)
+        if not stats or stats.get("score") is None:
+            await interaction.followup.send(content=f"❌ Token '{symbol.upper()}' not found or has no score.")
+            return
+
+        score = stats.get("score")
+        if score >= 70:
+            msg = f"🧠 {symbol.upper()}? That's a f*cking blue chip, anon! Ape in!"
+        elif score >= 30:
+            msg = f"🧪 {symbol.upper()}? Meh... mid-tier stuff. Might moon, might rug."
+        else:
+            msg = f"❌ {symbol.upper()}? Bro that's absolute sh*t. Get out before it rugs."
+        await interaction.followup.send(content=msg)
 
     @app_commands.command(name="find", description="Do a deep dive on a specific token")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def find(self, interaction: discord.Interaction, symbol: str):
         await interaction.response.defer()
-        data = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated").json().get("data", [])
-        for token in data:
-            attr = token.get("attributes", {})
-            if attr.get("symbol", "").lower() == symbol.lower():
-                net = token.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
-                stats = await fetch_token_stats(net, attr.get("address"))
-                name = stats.get("name", "Unknown")
-                score = stats.get("gt_score")
-                emoji = "🧠" if score and score > 70 else "🧪" if score and score > 30 else "❌"
-                score_str = f"{emoji} {score:.2f}" if score else "❓ Unknown"
-                embed = discord.Embed(title=f"🔎 Deep Dive — {name} ({symbol.upper()})", color=0x0099ff)
-                embed.add_field(name="Network", value=NETWORK_LABELS.get(net, net), inline=True)
-                embed.add_field(name="GT Score", value=score_str, inline=True)
-                embed.add_field(name="Website", value=stats.get("site", "N/A"), inline=False)
-                embed.add_field(name="Description", value=stats.get("desc", "No description found."), inline=False)
-                await interaction.followup.send(embed=embed)
-                return
-        await interaction.followup.send(content=f"❌ Token '{symbol.upper()}' not found in recent tokens.")
+        stats = await fetch_coingecko_coin(symbol)
+        if not stats:
+            await interaction.followup.send(content=f"❌ Token '{symbol.upper()}' not found.")
+            return
+
+        emoji = "🧠" if stats["score"] and stats["score"] > 70 else "🧪" if stats["score"] and stats["score"] > 30 else "❌"
+        score_str = f"{emoji} {stats['score']:.2f}" if stats["score"] else "❓ Unknown"
+        embed = discord.Embed(title=f"🔎 Deep Dive — {stats['name']} ({stats['symbol'].upper()})", color=0x0099ff)
+        embed.add_field(name="GT Score", value=score_str, inline=True)
+        embed.add_field(name="Website", value=stats.get("site", "N/A"), inline=False)
+        embed.add_field(name="Description", value=stats.get("desc", "No description found.")[:1024], inline=False)
+        embed.add_field(name="💵 Price", value=f"${stats['price']:.6f}" if stats["price"] else "N/A", inline=True)
+        embed.add_field(name="🧠 FDV", value=f"${stats['fdv'] / 1_000_000:.1f}M" if stats["fdv"] else "N/A", inline=True)
+        embed.add_field(name="📊 Volume", value=f"${stats['volume']:,.0f}" if stats["volume"] else "N/A", inline=True)
+        await interaction.followup.send(embed=embed)
 
     @app_commands.command(name="help", description="Show all GemHunter commands")
     async def help(self, interaction: discord.Interaction):
         embed = discord.Embed(title="🤖 Welcome to GemHunter!", color=0x00ffcc)
         embed.add_field(name="/gemhunter matrix", value="GemMatrix - List the 10 newest tokens with optional network filter.", inline=False)
-        embed.add_field(name="/gemhunter react <symbol>", value="React - Give a funny crypto reaction based on GT Score.", inline=False)
+        embed.add_field(name="/gemhunter react <symbol>", value="React - Give a funny crypto reaction based on CoinGecko Score.", inline=False)
         embed.add_field(name="/gemhunter find <symbol>", value="Find - Analyze a specific token in depth.", inline=False)
         await interaction.response.send_message(embed=embed)
 
@@ -168,7 +186,11 @@ bot.tree.add_command(GemHunter())
 async def on_ready():
     print(f"🟢 Logged in as {bot.user}")
     for guild in bot.guilds:
-        await bot.tree.sync(guild=guild)
-        print(f"✅ Synced commands to: {guild.name} ({guild.id})")
+        try:
+            await bot.tree.clear_commands(guild=guild)
+            await bot.tree.sync(guild=guild)
+            print(f"✅ Synced updated commands to: {guild.name} ({guild.id})")
+        except Exception as e:
+            print(f"❌ Sync failed for {guild.name}: {e}")
 
 bot.run(discord_gem_hunter)
