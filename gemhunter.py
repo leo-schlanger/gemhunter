@@ -4,6 +4,7 @@ from discord import app_commands
 import requests
 import os
 import asyncio
+import operator
 from keep_alive import keep_alive
 from dotenv import load_dotenv
 
@@ -201,7 +202,10 @@ class GemHunter(app_commands.Group):
 
         response = requests.get("https://api.coingecko.com/api/v3/coins/list")
         token_list = response.json() if response.status_code == 200 else []
-        matches = [t for t in token_list if t.get("symbol", "").lower() == symbol.lower()]
+        matches = [
+            t for t in token_list
+            if operator.contains(t.get("symbol", "").lower(), symbol.lower())
+        ]
 
         if not matches:
             if not deferred:
@@ -253,7 +257,10 @@ class GemHunter(app_commands.Group):
 
         response = requests.get("https://api.coingecko.com/api/v3/coins/list")
         token_list = response.json() if response.status_code == 200 else []
-        matches = [t for t in token_list if t.get("symbol", "").lower() == symbol.lower()]
+        matches = [
+            t for t in token_list 
+            if operator.contains(t.get("symbol", "").lower(), symbol.lower())
+        ]
 
         if not matches:
             if not deferred:
