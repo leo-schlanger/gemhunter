@@ -70,31 +70,37 @@ class GemHunter(app_commands.Group):
     @app_commands.choices(network=NETWORK_CHOICES)
     async def matrix(self, interaction: discord.Interaction, network: app_commands.Choice[str]):
         await interaction.response.defer(thinking=True)
-        tokens = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated").json().get("data", [])
+        try:
+            data = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated", timeout=10).json()
+        except:
+            await interaction.followup.send("❌ Failed to fetch token data.")
+            return
+
+        tokens = data.get("data", [])
         filtered = [t for t in tokens if network.value == "all" or t.get("relationships", {}).get("network", {}).get("data", {}).get("id") == network.value][:10]
 
         rows = []
         for idx, token in enumerate(filtered, 1):
-            attr = token["attributes"]
+            attr = token.get("attributes", {})
             net = token.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
 
             name = attr.get("name", "Unnamed")
             symbol = attr.get("symbol", "--")
             net_label = NETWORK_LABELS.get(net, net)
 
-            price = attr.get("price_usd") or attr.get("market_data", {}).get("price_usd")
-            gt_score = parse_float(attr.get("gt_score"))
-            liq = attr.get("total_reserve_in_usd") or attr.get("market_data", {}).get("total_reserve_in_usd")
-            fdv = attr.get("fdv_usd") or attr.get("market_data", {}).get("fdv_usd")
-            volume = attr.get("volume_usd", {}).get("h24") or attr.get("market_data", {}).get("volume_usd", {}).get("h24")
+            price = parse_float(attr.get("price_usd") or attr.get("market_data", {}).get("price_usd"))
+            liq = parse_float(attr.get("total_reserve_in_usd") or attr.get("market_data", {}).get("total_reserve_in_usd"))
+            fdv = parse_float(attr.get("fdv_usd") or attr.get("market_data", {}).get("fdv_usd"))
+            volume = parse_float(attr.get("volume_usd", {}).get("h24") or attr.get("market_data", {}).get("volume_usd", {}).get("h24"))
+            score = parse_float(attr.get("gt_score"))
 
-            score_emoji = "🧠" if gt_score and gt_score >= 70 else "🧪" if gt_score and gt_score >= 30 else "❌" if gt_score else "❓"
-            risk_emoji = "🔴" if liq and float(liq) < 1000 or fdv and float(fdv) > 10_000_000 else "🟡" if liq and float(liq) < 10_000 or fdv and float(fdv) > 1_000_000 else "🟢"
+            score_emoji = "🧠" if score and score >= 70 else "🧪" if score and score >= 30 else "❌" if score else "❓"
+            risk_emoji = "🔴" if liq and liq < 1000 or fdv and fdv > 10_000_000 else "🟡" if liq and liq < 10_000 or fdv and fdv > 1_000_000 else "🟢"
 
             rows.append(
                 f"**{idx}. 💎 {name} ({symbol})** {risk_emoji} {score_emoji} | 🌐 {net_label}\n"
-                f"💵 {price or 'N/A'} | 💧 {liq or 'N/A'} | 🧠 {fdv or 'N/A'}\n"
-                f"📊 Volume 24h: {volume or 'N/A'}\n"
+                f"💵 {f'${price:.6f}' if price else 'N/A'} | 💧 {f'${liq:,.0f}' if liq else 'N/A'} | 🧠 {f'${fdv:,.0f}' if fdv else 'N/A'}\n"
+                f"📊 Volume 24h: {f'${volume:,.0f}' if volume else 'N/A'}\n"
             )
 
         legend = (
@@ -114,8 +120,21 @@ class GemHunter(app_commands.Group):
         except discord.NotFound:
             return
 
-        token_list = requests.get("https://api.coingecko.com/api/v3/coins/list").json()
-        matches = [t for t in token_list if isinstance(t, dict) and t.get("symbol", "").lower() == symbol.lower()]
+        response = requests.get("https://api.coingecko.com/api/v3/coins/list")
+        try:
+            token_list = response.json()
+            if isinstance(token_list, list):
+                pass  # OK
+            elif isinstance(token_list, dict) and "coins" in token_list:
+                token_list = token_list["coins"]
+            else:
+                token_list = []
+        except Exception as e:
+            print(f"❌ Failed to parse token list: {e}")
+            token_list = []
+        if isinstance(token_list, dict):
+            token_list = token_list.get("coins", [])  # fallback if wrapped in 'coins'
+        matches = [t for t in token_list if t.get("symbol", "").lower() == symbol.lower()]
 
         if not matches:
             await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found.")
@@ -147,8 +166,21 @@ class GemHunter(app_commands.Group):
         except discord.NotFound:
             return
 
-        token_list = requests.get("https://api.coingecko.com/api/v3/coins/list").json()
-        matches = [t for t in token_list if isinstance(t, dict) and t.get("symbol", "").lower() == symbol.lower()]
+        response = requests.get("https://api.coingecko.com/api/v3/coins/list")
+        try:
+            token_list = response.json()
+            if isinstance(token_list, list):
+                pass  # OK
+            elif isinstance(token_list, dict) and "coins" in token_list:
+                token_list = token_list["coins"]
+            else:
+                token_list = []
+        except Exception as e:
+            print(f"❌ Failed to parse token list: {e}")
+            token_list = []
+        if isinstance(token_list, dict):
+            token_list = token_list.get("coins", [])  # fallback if wrapped in 'coins'
+        matches = [t for t in token_list if t.get("symbol", "").lower() == symbol.lower()]
 
         if not matches:
             await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found.")
