@@ -41,11 +41,27 @@ def parse_float(value):
     except (TypeError, ValueError):
         return None
 
+async def fetch_token_stats(network, address):
+    url = f"https://api.geckoterminal.com/api/v2/networks/{network}/tokens/{address}"
+    try:
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            attr = response.json().get("data", {}).get("attributes", {})
+            return {
+                "price": parse_float(attr.get("price_usd")),
+                "fdv": parse_float(attr.get("fdv_usd")),
+                "liq": parse_float(attr.get("total_reserve_in_usd")),
+                "volume_24h": parse_float(attr.get("volume_usd", {}).get("h24")),
+            }
+    except Exception as e:
+        print(f"❌ Error fetching token stats: {e}")
+    return {}
+
 async def prompt_token_selection(interaction, symbol, options):
     msg = f"⚠️ Found multiple tokens with symbol `{symbol}`:\n"
     for i, token in enumerate(options):
-        msg += f"**{i+1}.** {token['name']} — `{token['id']}`\n"
-    msg += "\nPlease reply with the number of your choice (1–{0}). You have 30 seconds.".format(len(options))
+        msg += f"**{i+1}.** {token['attributes'].get('name')} — `{token['id']}`\n"
+    msg += f"\nPlease reply with the number of your choice (1–{len(options)}). You have 30 seconds."
 
     await interaction.followup.send(msg)
 
@@ -81,26 +97,49 @@ class GemHunter(app_commands.Group):
 
         rows = []
         for idx, token in enumerate(filtered, 1):
-            attr = token.get("attributes", {})
-            net = token.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
+            attr = token["attributes"]
+            relationships = token.get("relationships", {})
 
             name = attr.get("name", "Unnamed")
             symbol = attr.get("symbol", "--")
-            net_label = NETWORK_LABELS.get(net, net)
+            address = attr.get("address")
+            gt_score = parse_float(attr.get("gt_score"))
+            network_key = relationships.get("network", {}).get("data", {}).get("id", "unknown")
+            network_name = NETWORK_LABELS.get(network_key, network_key.capitalize())
 
-            price = parse_float(attr.get("price_usd") or attr.get("market_data", {}).get("price_usd"))
-            liq = parse_float(attr.get("total_reserve_in_usd") or attr.get("market_data", {}).get("total_reserve_in_usd"))
-            fdv = parse_float(attr.get("fdv_usd") or attr.get("market_data", {}).get("fdv_usd"))
-            volume = parse_float(attr.get("volume_usd", {}).get("h24") or attr.get("market_data", {}).get("volume_usd", {}).get("h24"))
-            score = parse_float(attr.get("gt_score"))
+            stats = await fetch_token_stats(network_key, address)
 
-            score_emoji = "🧠" if score and score >= 70 else "🧪" if score and score >= 30 else "❌" if score else "❓"
-            risk_emoji = "🔴" if liq and liq < 1000 or fdv and fdv > 10_000_000 else "🟡" if liq and liq < 10_000 or fdv and fdv > 1_000_000 else "🟢"
+            if gt_score is not None:
+                if gt_score >= 70:
+                    score_emoji = "🧠"
+                elif gt_score >= 30:
+                    score_emoji = "🧪"
+                else:
+                    score_emoji = "❌"
+            else:
+                score_emoji = "❓"
+
+            if stats.get("liq") is not None and stats.get("fdv") is not None:
+                liq = stats["liq"]
+                fdv = stats["fdv"]
+                if liq < 1000 or fdv > 10_000_000:
+                    risk_emoji = "🔴"
+                elif liq < 10_000 or fdv > 1_000_000:
+                    risk_emoji = "🟡"
+                else:
+                    risk_emoji = "🟢"
+            else:
+                risk_emoji = "❓"
+
+            price = f"${stats['price']:.6f}" if stats.get("price") else "N/A"
+            liq_val = f"${stats['liq']:,.0f}" if stats.get("liq") else "N/A"
+            fdv_val = f"${stats['fdv']/1_000_000:.1f}M" if stats.get("fdv") else "N/A"
+            vol_24h = f"${stats['volume_24h']:,.0f}" if stats.get("volume_24h") else "N/A"
 
             rows.append(
-                f"**{idx}. 💎 {name} ({symbol})** {risk_emoji} {score_emoji} | 🌐 {net_label}\n"
-                f"💵 {f'${price:.6f}' if price else 'N/A'} | 💧 {f'${liq:,.0f}' if liq else 'N/A'} | 🧠 {f'${fdv:,.0f}' if fdv else 'N/A'}\n"
-                f"📊 Volume 24h: {f'${volume:,.0f}' if volume else 'N/A'}\n"
+                f"**{idx}. 💎 {name} ({symbol})** {risk_emoji} {score_emoji} | 🌐 {network_name}\n"
+                f"💵 {price} | 💧 {liq_val} | 🧠 {fdv_val}\n"
+                f"📊 Volume 24h: {vol_24h}\n"
             )
 
         legend = (
@@ -112,7 +151,7 @@ class GemHunter(app_commands.Group):
         embed = discord.Embed(title=f"🧠 Gem Matrix — Top 10 Tokens ({network.name})", description="\n".join(rows) + "\n\n" + legend, color=0x00ffcc)
         await interaction.followup.send(embed=embed)
 
-    @app_commands.command(name="react", description="Give a fun crypto reaction based on CoinGecko sentiment")
+    @app_commands.command(name="react", description="Give a fun crypto reaction based on GT Score")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def react(self, interaction: discord.Interaction, symbol: str):
         try:
@@ -135,23 +174,24 @@ class GemHunter(app_commands.Group):
         if isinstance(token_list, dict):
             token_list = token_list.get("coins", [])  # fallback if wrapped in 'coins'
         matches = [t for t in token_list if t.get("symbol", "").lower() == symbol.lower()]
-
+        
         if not matches:
-            await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found.")
+            await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found in recent tokens.")
             return
 
         selected = matches[0] if len(matches) == 1 else await prompt_token_selection(interaction, symbol, matches)
         if not selected:
             return
 
-        token_data = requests.get(f"https://api.coingecko.com/api/v3/coins/{selected['id']}").json()
-        sentiment = token_data.get("sentiment_votes_up_percentage")
+        attr = selected["attributes"]
+        gt_score = parse_float(attr.get("gt_score"))
+        symbol = attr.get("symbol", "--")
 
-        if sentiment is None:
+        if gt_score is None:
             msg = f"❓ No sentiment data for {symbol.upper()} yet."
-        elif sentiment >= 70:
+        elif gt_score >= 70:
             msg = f"🧠 {symbol.upper()}? That's a f*cking blue chip, anon! Ape in!"
-        elif sentiment >= 30:
+        elif gt_score >= 30:
             msg = f"🧪 {symbol.upper()}? Mid-tier vibes... might moon, might rug."
         else:
             msg = f"❌ {symbol.upper()}? Total trash. Stay away."
@@ -166,43 +206,45 @@ class GemHunter(app_commands.Group):
         except discord.NotFound:
             return
 
-        response = requests.get("https://api.coingecko.com/api/v3/coins/list")
-        try:
-            token_list = response.json()
-            if isinstance(token_list, list):
-                pass  # OK
-            elif isinstance(token_list, dict) and "coins" in token_list:
-                token_list = token_list["coins"]
-            else:
-                token_list = []
-        except Exception as e:
-            print(f"❌ Failed to parse token list: {e}")
-            token_list = []
-        if isinstance(token_list, dict):
-            token_list = token_list.get("coins", [])  # fallback if wrapped in 'coins'
-        matches = [t for t in token_list if t.get("symbol", "").lower() == symbol.lower()]
+        data = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated").json()
+        tokens = data.get("data", [])
+        matches = [t for t in tokens if t["attributes"].get("symbol", "").lower() == symbol.lower()]
 
         if not matches:
-            await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found.")
+            await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found in recent tokens.")
             return
 
         selected = matches[0] if len(matches) == 1 else await prompt_token_selection(interaction, symbol, matches)
         if not selected:
             return
 
-        token_data = requests.get(f"https://api.coingecko.com/api/v3/coins/{selected['id']}").json()
+        attr = selected["attributes"]
+        relationships = selected.get("relationships", {})
+        network_key = relationships.get("network", {}).get("data", {}).get("id", "unknown")
+        network_name = NETWORK_LABELS.get(network_key, network_key.capitalize())
+        address = attr.get("address")
+        name = attr.get("name", "Unknown")
+        symbol = attr.get("symbol", "--")
+        gt_score = parse_float(attr.get("gt_score"))
 
-        name = token_data.get("name", "Unknown")
-        desc = token_data.get("description", {}).get("en", "No description.")
-        homepage = token_data.get("links", {}).get("homepage", [None])[0]
-        sentiment = token_data.get("sentiment_votes_up_percentage")
-        emoji = "🧠" if sentiment and sentiment >= 70 else "🧪" if sentiment and sentiment >= 30 else "❌"
-        score_str = f"{emoji} {sentiment:.2f}%" if sentiment is not None else "❓ Unknown"
+        stats = await fetch_token_stats(network_key, address)
+
+        emoji = "🧠" if gt_score and gt_score >= 70 else "🧪" if gt_score and gt_score >= 30 else "❌"
+        score_str = f"{emoji} {gt_score:.1f}" if gt_score is not None else "❓ Unknown"
+
+        price = f"${stats['price']:.6f}" if stats.get("price") else "N/A"
+        liq_val = f"${stats['liq']:,.0f}" if stats.get("liq") else "N/A"
+        fdv_val = f"${stats['fdv']/1_000_000:.1f}M" if stats.get("fdv") else "N/A"
+        vol_24h = f"${stats['volume_24h']:,.0f}" if stats.get("volume_24h") else "N/A"
 
         embed = discord.Embed(title=f"🔎 Deep Dive — {name} ({symbol.upper()})", color=0x0099ff)
-        embed.add_field(name="Sentiment", value=score_str, inline=True)
-        embed.add_field(name="Website", value=homepage or "N/A", inline=False)
-        embed.add_field(name="Description", value=desc[:1000], inline=False)
+        embed.add_field(name="GT Score", value=score_str, inline=True)
+        embed.add_field(name="Network", value=network_name, inline=True)
+        embed.add_field(name="Price", value=price, inline=True)
+        embed.add_field(name="FDV", value=fdv_val, inline=True)
+        embed.add_field(name="Liquidity", value=liq_val, inline=True)
+        embed.add_field(name="24h Volume", value=vol_24h, inline=True)
+        embed.add_field(name="Address", value=address, inline=False)
 
         await interaction.followup.send(embed=embed)
 
@@ -210,8 +252,8 @@ class GemHunter(app_commands.Group):
     async def help(self, interaction: discord.Interaction):
         embed = discord.Embed(title="🤖 Welcome to GemHunter!", color=0x00ffcc)
         embed.add_field(name="/gemhunter matrix", value="List 10 newest tokens with filters", inline=False)
-        embed.add_field(name="/gemhunter react <symbol>", value="Crypto reaction with sentiment 💩 or 🔥", inline=False)
-        embed.add_field(name="/gemhunter find <symbol>", value="Deep analysis of token with sentiment and info", inline=False)
+        embed.add_field(name="/gemhunter react <symbol>", value="Crypto reaction with GT Score", inline=False)
+        embed.add_field(name="/gemhunter find <symbol>", value="Deep analysis of token with stats", inline=False)
         await interaction.response.send_message(embed=embed)
 
 bot.tree.add_command(GemHunter())
@@ -221,4 +263,5 @@ async def on_ready():
     print(f"🟢 Logged in as {bot.user}")
     await bot.tree.sync()
 
+keep_alive()
 bot.run(discord_gem_hunter)
