@@ -83,7 +83,7 @@ class GemHunter(app_commands.Group):
     @app_commands.describe(network="Filter by blockchain network (or use all)")
     @app_commands.choices(network=NETWORK_CHOICES)
     async def matrix(self, interaction: discord.Interaction, network: app_commands.Choice[str]):
-        await interaction.response.defer(thinking=True)
+        await interaction.response.defer()
         try:
             data = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated", timeout=10).json()
         except:
@@ -152,9 +152,8 @@ class GemHunter(app_commands.Group):
     @app_commands.command(name="react", description="Give a fun crypto reaction based on GT Score")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def react(self, interaction: discord.Interaction, symbol: str):
-        await interaction.response.defer(thinking=True)
         try:
-            await interaction.response.defer(thinking=True)
+            await interaction.response.defer()
         except discord.NotFound:
             return
 
@@ -204,9 +203,8 @@ class GemHunter(app_commands.Group):
     @app_commands.command(name="find", description="Do a deep dive on a specific token")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def find(self, interaction: discord.Interaction, symbol: str):
-        await interaction.response.defer(thinking=True)
         try:
-            await interaction.response.defer(thinking=True)
+            await interaction.response.defer()
         except discord.NotFound:
             return
 
