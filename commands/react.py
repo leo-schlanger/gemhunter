@@ -2,7 +2,6 @@ import discord
 import logging
 from discord import app_commands
 from utils.views import TokenSelectionView
-from utils.views import TokenSelectionView
 from utils.api import (
     fetch_token_stats_geckoterminal,
     fetch_token_stats_terminal_by_address,
@@ -27,31 +26,31 @@ class ReactCommand(app_commands.Command):
             logging.warning("[REACT] Failed to defer interaction")
 
         try:
-            
-matches_exact, matches_similar = await fetch_token_stats_geckoterminal(symbol, separate_matches=True)
+            matches_exact, matches_similar = await fetch_token_stats_geckoterminal(symbol, separate_matches=True)
 
-if not matches_exact and not matches_similar:
-    await interaction.followup.send(f"❌ Nenhum token encontrado com símbolo `{symbol}`")
-    return
+            if not matches_exact and not matches_similar:
+                await interaction.followup.send(f"❌ Nenhum token encontrado com símbolo `{symbol}`")
+                return
 
-token_matches = matches_exact if matches_exact else matches_similar
+            token_matches = matches_exact if matches_exact else matches_similar
 
-if len(token_matches) == 1:
-    only_token = token_matches[0]
-else:
-    async def handle_selection(inter: discord.Interaction, selected_symbol: str):
-        await self.callback(inter, selected_symbol)
+            if len(token_matches) == 1:
+                only_token = token_matches[0]
+            else:
+                async def handle_selection(inter: discord.Interaction, selected_symbol: str):
+                    await self.react(inter, selected_symbol)
 
-    embed = discord.Embed(
-        title=f"🎭 Múltiplos tokens encontrados para '{symbol}'",
-        description="Selecione o símbolo correto abaixo:",
-        color=0xff9900
-    )
-    await interaction.followup.send(embed=embed, view=TokenSelectionView("react", token_matches, handle_selection))
-    return
+                embed = discord.Embed(
+                    title=f"🎭 Múltiplos tokens encontrados para '{symbol}'",
+                    description="Selecione o símbolo correto abaixo:",
+                    color=0xff9900
+                )
+                await interaction.followup.send(
+                    embed=embed,
+                    view=TokenSelectionView("react", token_matches, handle_selection)
+                )
+                return
 
-# único token
-            only_token = token_matches[0]
             attr = only_token.get("attributes", {})
             network = only_token.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
             address = attr.get("address")
