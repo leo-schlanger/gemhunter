@@ -60,7 +60,10 @@ async def fetch_token_stats(network, address):
 async def prompt_token_selection(interaction, symbol, options):
     msg = f"⚠️ Found multiple tokens with symbol `{symbol}`:\n"
     for i, token in enumerate(options):
-        msg += f"**{i+1}.** {token['attributes'].get('name')} — `{token['id']}`\n"
+        # Compatível com CoinGecko e GeckoTerminal
+        name = token.get("name") or token.get("attributes", {}).get("name", "Unknown")
+        token_id = token.get("id", "N/A")
+        msg += f"**{i+1}.** {name} — `{token_id}`\n"
     msg += f"\nPlease reply with the number of your choice (1–{len(options)}). You have 30 seconds."
 
     await interaction.followup.send(msg)
