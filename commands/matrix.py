@@ -25,21 +25,32 @@ class MatrixCommand(app_commands.Command):
             logging.warning("[MATRIX] Failed to defer interaction")
 
         try:
-            response = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated?limit=10000", timeout=20)
-            data = response.json()
-            tokens = data.get("data", [])
+            if network.value == "all":
+                response = requests.get(
+                    "https://api.geckoterminal.com/api/v2/tokens/info_recently_updated?limit=2400",
+                    timeout=15
+                )
+                tokens = response.json().get("data", [])[:10]
+            else:
+                response = requests.get(
+                    f"https://api.geckoterminal.com/api/v2/networks/{network.value}/tokens?page=1",
+                    timeout=15
+                )
+                tokens_raw = response.json().get("data", [])
+                # Ordenar por menor liquidez
+                tokens = sorted(tokens_raw, key=lambda t: parse_float(t.get("attributes", {}).get("total_reserve_in_usd")) or 0)[:10]
+
         except Exception as e:
             logging.error(f"[MATRIX] Failed to fetch token data: {e}")
-            await interaction.followup.send("❌ Failed to fetch token data.")
+            await interaction.followup.send("❌ Falha ao buscar os tokens mais recentes.")
             return
 
-        filtered = [
-            t for t in tokens
-            if network.value == "all" or t.get("relationships", {}).get("network", {}).get("data", {}).get("id") == network.value
-        ][:10]
+        if not tokens:
+            await interaction.followup.send(f"❌ Nenhum token recente encontrado para `{network.name}`")
+            return
 
         rows = []
-        for idx, token in enumerate(filtered, 1):
+        for idx, token in enumerate(tokens, 1):
             attr = token["attributes"]
             relationships = token.get("relationships", {})
 
@@ -47,7 +58,7 @@ class MatrixCommand(app_commands.Command):
             symbol = attr.get("symbol", "--")
             address = attr.get("address")
             gt_score = parse_float(attr.get("gt_score"))
-            network_key = relationships.get("network", {}).get("data", {}).get("id", "unknown")
+            network_key = relationships.get("network", {}).get("data", {}).get("id", network.value)
             network_name = NETWORK_LABELS.get(network_key, network_key.capitalize())
 
             stats = await fetch_token_stats_terminal_by_address(network_key, address)

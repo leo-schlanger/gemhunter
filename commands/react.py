@@ -25,35 +25,57 @@ class ReactCommand(app_commands.Command):
             logging.warning("[REACT] Failed to defer interaction")
 
         try:
-            token_matches = await fetch_token_stats_geckoterminal(symbol, return_multiple=True)
+            result = await fetch_token_stats_geckoterminal(symbol, return_multiple=True)
 
-            if not token_matches:
+            if isinstance(result, dict):
+                token = result
+
+            elif isinstance(result, list) and len(result) > 0:
+                exact_matches = [
+                    t for t in result
+                    if t.get("attributes", {}).get("symbol", "").lower() == symbol.lower()
+                ]
+
+                if len(exact_matches) == 1:
+                    token = exact_matches[0]
+                else:
+                    options = exact_matches if exact_matches else result
+                    options.sort(key=lambda t: len(t["attributes"].get("symbol", "")))
+                    options = options[:5]
+
+                    embed = discord.Embed(
+                        title=f"🎯 Vários tokens encontrados para '{symbol}'",
+                        description="\n".join([
+                            f"{i+1}. `{t['attributes'].get('symbol', '').upper()}` — {t['attributes'].get('name', 'Unknown')}"
+                            for i, t in enumerate(options)
+                        ]),
+                        color=0xff9900
+                    )
+                    embed.set_footer(text="Digite o número (1–5) para escolher.")
+
+                    await interaction.followup.send(embed=embed)
+
+                    def check(m):
+                        return (
+                            m.author.id == interaction.user.id and
+                            m.channel == interaction.channel and
+                            m.content.isdigit() and
+                            1 <= int(m.content) <= len(options)
+                        )
+
+                    try:
+                        msg = await interaction.client.wait_for("message", timeout=30.0, check=check)
+                        selected_index = int(msg.content) - 1
+                        token = options[selected_index]
+                    except:
+                        await interaction.followup.send("⏱️ Tempo esgotado ou resposta inválida. Operação cancelada.")
+                        return
+            else:
                 await interaction.followup.send(f"❌ Nenhum token encontrado com símbolo `{symbol}`")
                 return
 
-            if len(token_matches) > 1:
-                embed = discord.Embed(
-                    title=f"🎭 Múltiplos tokens encontrados para '{symbol}'",
-                    description="Selecione o símbolo correto abaixo:",
-                    color=0xff9900
-                )
-                for token in token_matches:
-                    attr = token.get("attributes", {})
-                    name = attr.get("name", "Unknown")
-                    symb = attr.get("symbol", "").upper()
-                    network = token.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
-                    embed.add_field(
-                        name=f"{name} ({symb})",
-                        value=f"Rede: {network.capitalize()} — Use `/gemhunter react {symb.lower()}`",
-                        inline=False
-                    )
-                await interaction.followup.send(embed=embed)
-                return
-
-            # único token
-            only_token = token_matches[0]
-            attr = only_token.get("attributes", {})
-            network = only_token.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
+            attr = token.get("attributes", {})
+            network = token.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
             address = attr.get("address")
 
             terminal_data = await fetch_token_stats_terminal_by_address(network, address)
