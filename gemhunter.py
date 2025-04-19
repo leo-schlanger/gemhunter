@@ -22,6 +22,19 @@ NETWORK_LABELS = {
     "fantom": "Fantom", "unknown": "Unknown"
 }
 
+NETWORK_CHOICES = [
+    app_commands.Choice(name="ethereum", value="eth"),
+    app_commands.Choice(name="bsc", value="bsc"),
+    app_commands.Choice(name="polygon", value="polygon"),
+    app_commands.Choice(name="solana", value="solana"),
+    app_commands.Choice(name="base", value="base"),
+    app_commands.Choice(name="arbitrum", value="arbitrum"),
+    app_commands.Choice(name="optimism", value="optimism"),
+    app_commands.Choice(name="avax", value="avax"),
+    app_commands.Choice(name="fantom", value="fantom"),
+    app_commands.Choice(name="all", value="all")
+]
+
 def parse_float(value):
     try:
         return float(value)
@@ -54,28 +67,26 @@ class GemHunter(app_commands.Group):
         super().__init__(name="gemhunter", description="The ultimate gem analyzer")
 
     @app_commands.command(name="matrix", description="List the 10 newest tokens with GT score and risk")
-    async def matrix(self, interaction: discord.Interaction):
+    @app_commands.describe(network="Filter by blockchain network (or use all)")
+    @app_commands.choices(network=NETWORK_CHOICES)
+    async def matrix(self, interaction: discord.Interaction, network: app_commands.Choice[str]):
         await interaction.response.defer()
-        base_url = "https://api.geckoterminal.com/api/v2/tokens/info_recently_updated"
-        tokens = requests.get(base_url).json().get("data", [])[:10]
+        tokens = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated").json().get("data", [])
+        filtered = [t for t in tokens if network.value == "all" or t.get("relationships", {}).get("network", {}).get("data", {}).get("id") == network.value][:10]
 
         rows = []
-        for idx, token in enumerate(tokens, 1):
+        for idx, token in enumerate(filtered, 1):
             attr = token["attributes"]
             net = token.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
             stats = await fetch_token_stats(net, attr.get("address"))
-
             name = attr.get("name", "Unnamed")
             symbol = attr.get("symbol", "--")
-            network = NETWORK_LABELS.get(net, net)
+            net_label = NETWORK_LABELS.get(net, net)
 
             gt_score = stats.get("gt_score")
             score_emoji = "🧠" if gt_score and gt_score >= 70 else "🧪" if gt_score and gt_score >= 30 else "❌" if gt_score else "❓"
-
             if stats.get("liq") is not None and stats.get("fdv") is not None:
-                liq = stats["liq"]
-                fdv = stats["fdv"]
-                risk_emoji = "🔴" if liq < 1000 or fdv > 10_000_000 else "🟡" if liq < 10_000 or fdv > 1_000_000 else "🟢"
+                risk_emoji = "🔴" if stats["liq"] < 1000 or stats["fdv"] > 10_000_000 else "🟡" if stats["liq"] < 10_000 or stats["fdv"] > 1_000_000 else "🟢"
             else:
                 risk_emoji = "❓"
 
@@ -85,7 +96,7 @@ class GemHunter(app_commands.Group):
             vol_24h = f"${stats['volume_24h']:,.0f}" if stats.get("volume_24h") else "N/A"
 
             rows.append(
-                f"**{idx}. 💎 {name} ({symbol})** {risk_emoji} {score_emoji} | 🌐 {network}\n"
+                f"**{idx}. 💎 {name} ({symbol})** {risk_emoji} {score_emoji} | 🌐 {net_label}\n"
                 f"💵 {price} | 💧 {liq_val} | 🧠 {fdv_val}\n"
                 f"📊 Volume 24h: {vol_24h}\n"
             )
@@ -96,20 +107,14 @@ class GemHunter(app_commands.Group):
             "🧠 Score >70 | 🧪 30–70 | ❌ <30 | ❓ Unknown"
         )
 
-        embed = discord.Embed(
-            title="🧠 Gem Matrix — Top 10 New Tokens",
-            description="\n".join(rows) + "\n\n" + legend,
-            color=0x00ffcc
-        )
+        embed = discord.Embed(title=f"🧠 Gem Matrix — Top 10 Tokens ({network.name})", description="\n".join(rows) + "\n\n" + legend, color=0x00ffcc)
         await interaction.followup.send(embed=embed)
 
     @app_commands.command(name="react", description="Give a fun crypto reaction based on GT Score")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def react(self, interaction: discord.Interaction, symbol: str):
-        url = "https://api.geckoterminal.com/api/v2/tokens/info_recently_updated"
-        data = requests.get(url).json().get("data", [])
-
-        found = False
+        await interaction.response.defer()
+        data = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated").json().get("data", [])
         for token in data:
             attr = token.get("attributes", {})
             if attr.get("symbol", "").lower() == symbol.lower():
@@ -122,19 +127,15 @@ class GemHunter(app_commands.Group):
                     msg = f"🧪 {symbol.upper()}? Meh... mid-tier stuff. Might moon, might rug."
                 else:
                     msg = f"❌ {symbol.upper()}? Bro that's absolute sh*t. Get out before it rugs."
-                await interaction.response.send_message(msg)
-                found = True
-                break
-
-        if not found:
-            await interaction.response.send_message(f"❌ Token '{symbol.upper()}' not found in recent tokens.")
+                await interaction.followup.send(content=msg)
+                return
+        await interaction.followup.send(content=f"❌ Token '{symbol.upper()}' not found in recent tokens.")
 
     @app_commands.command(name="find", description="Do a deep dive on a specific token")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def find(self, interaction: discord.Interaction, symbol: str):
-        url = "https://api.geckoterminal.com/api/v2/tokens/info_recently_updated"
-        data = requests.get(url).json().get("data", [])
-
+        await interaction.response.defer()
+        data = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated").json().get("data", [])
         for token in data:
             attr = token.get("attributes", {})
             if attr.get("symbol", "").lower() == symbol.lower():
@@ -149,17 +150,16 @@ class GemHunter(app_commands.Group):
                 embed.add_field(name="GT Score", value=score_str, inline=True)
                 embed.add_field(name="Website", value=stats.get("site", "N/A"), inline=False)
                 embed.add_field(name="Description", value=stats.get("desc", "No description found."), inline=False)
-                await interaction.response.send_message(embed=embed)
+                await interaction.followup.send(embed=embed)
                 return
-
-        await interaction.response.send_message(f"❌ Token '{symbol.upper()}' not found in recent tokens.")
+        await interaction.followup.send(content=f"❌ Token '{symbol.upper()}' not found in recent tokens.")
 
     @app_commands.command(name="help", description="Show all GemHunter commands")
     async def help(self, interaction: discord.Interaction):
         embed = discord.Embed(title="🤖 Welcome to GemHunter!", color=0x00ffcc)
-        embed.add_field(name="/gemhunter matrix", value="Gem Matrix\nList the 10 newest tokens with risk, GT Score, volume, and network info.", inline=False)
-        embed.add_field(name="/gemhunter react <symbol>", value="Shit or Hit?\nGet a degenerate crypto reaction based on GT Score.", inline=False)
-        embed.add_field(name="/gemhunter find <symbol>", value="Deep Dive\nSee a full analysis of a token with score, description, and link.", inline=False)
+        embed.add_field(name="/gemhunter matrix", value="GemMatrix - List the 10 newest tokens with optional network filter.", inline=False)
+        embed.add_field(name="/gemhunter react <symbol>", value="React - Give a funny crypto reaction based on GT Score.", inline=False)
+        embed.add_field(name="/gemhunter find <symbol>", value="Find - Analyze a specific token in depth.", inline=False)
         await interaction.response.send_message(embed=embed)
 
 bot.tree.add_command(GemHunter())
