@@ -155,11 +155,11 @@ class GemHunter(app_commands.Group):
         embed.add_field(name="/gemhunter find <symbol>", value="Deep Dive\nSee a full analysis of a token with score, description, and link.", inline=False)
         await interaction.response.send_message(embed=embed)
 
+bot.tree.add_command(GemHunter())
+
 @bot.event
 async def on_ready():
     print(f"🟢 Logged in as {bot.user}")
-    bot.tree.add_command(GemHunter())
     await bot.tree.sync()
 
-keep_alive()
 bot.run(discord_gem_hunter)
