@@ -204,7 +204,7 @@ class GemHunter(app_commands.Group):
         token_list = response.json() if response.status_code == 200 else []
         matches = [
             t for t in token_list
-            if operator.contains(t.get("symbol", "").lower(), symbol.lower())
+            if symbol.lower() in t.get("symbol", "").lower()
         ]
 
         if not matches:
@@ -259,7 +259,7 @@ class GemHunter(app_commands.Group):
         token_list = response.json() if response.status_code == 200 else []
         matches = [
             t for t in token_list 
-            if operator.contains(t.get("symbol", "").lower(), symbol.lower())
+            if symbol.lower() in t.get("symbol", "").lower()
         ]
 
         if not matches:
@@ -286,7 +286,7 @@ class GemHunter(app_commands.Group):
         embed.add_field(name="Network", value=terminal_data.get("network", "❓"), inline=True)
         embed.add_field(name="Website", value=gecko_data.get("homepage", "N/A"), inline=False)
 
-        desc = gecko_data.get("description")
+        desc = gecko_data.get("description","en")
         if desc:
             embed.add_field(name="Description", value=desc[:1000], inline=False)
 
