@@ -60,13 +60,8 @@ async def fetch_token_stats(network, address):
 async def prompt_token_selection(interaction, symbol, options):
     msg = f"⚠️ Found multiple tokens with symbol `{symbol}`:\n"
     for i, token in enumerate(options):
-        # Compatível com CoinGecko e GeckoTerminal
-        name = token.get("name") or token.get("attributes", {}).get("name", "Unknown")
-        token_id = token.get("id", "N/A")
-        msg += f"**{i+1}.** {name} — `{token_id}`\n"
+        msg += f"**{i+1}.** {token['attributes'].get('name')} — `{token['id']}`\n"
     msg += f"\nPlease reply with the number of your choice (1–{len(options)}). You have 30 seconds."
-
-    await interaction.followup.send(msg)
 
     def check(m):
         return m.author == interaction.user and m.channel == interaction.channel
@@ -187,14 +182,18 @@ class GemHunter(app_commands.Group):
             return
 
         attr = selected["attributes"]
-        gt_score = parse_float(attr.get("gt_score"))
+
+        address = attr.get("address")
+        network_key = selected.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
+
+        stats = await fetch_token_stats(network_key, address)
         symbol = attr.get("symbol", "--")
 
-        if gt_score is None:
+        if stats is None:
             msg = f"❓ No sentiment data for {symbol.upper()} yet."
-        elif gt_score >= 70:
+        elif stats >= 70:
             msg = f"🧠 {symbol.upper()}? That's a f*cking blue chip, anon! Ape in!"
-        elif gt_score >= 30:
+        elif stats >= 30:
             msg = f"🧪 {symbol.upper()}? Mid-tier vibes... might moon, might rug."
         else:
             msg = f"❌ {symbol.upper()}? Total trash. Stay away."
@@ -228,17 +227,16 @@ class GemHunter(app_commands.Group):
         address = attr.get("address")
         name = attr.get("name", "Unknown")
         symbol = attr.get("symbol", "--")
-        gt_score = parse_float(attr.get("gt_score"))
 
         stats = await fetch_token_stats(network_key, address)
 
-        emoji = "🧠" if gt_score and gt_score >= 70 else "🧪" if gt_score and gt_score >= 30 else "❌"
-        score_str = f"{emoji} {gt_score:.1f}" if gt_score is not None else "❓ Unknown"
+        emoji = "🧠" if stats and stats >= 70 else "🧪" if stats and stats >= 30 else "❌"
+        score_str = f"{emoji} {stats:.1f}" if stats is not None else "❓ Unknown"
 
-        price = f"${stats['price']:.6f}" if stats.get("price") else "N/A"
-        liq_val = f"${stats['liq']:,.0f}" if stats.get("liq") else "N/A"
-        fdv_val = f"${stats['fdv']/1_000_000:.1f}M" if stats.get("fdv") else "N/A"
-        vol_24h = f"${stats['volume_24h']:,.0f}" if stats.get("volume_24h") else "N/A"
+        price = f"${attr['price']:.6f}" if attr.get("price") else "N/A"
+        liq_val = f"${attr['liq']:,.0f}" if attr.get("liq") else "N/A"
+        fdv_val = f"${attr['fdv']/1_000_000:.1f}M" if attr.get("fdv") else "N/A"
+        vol_24h = f"${attr['volume_24h']:,.0f}" if attr.get("volume_24h") else "N/A"
 
         embed = discord.Embed(title=f"🔎 Deep Dive — {name} ({symbol.upper()})", color=0x0099ff)
         embed.add_field(name="GT Score", value=score_str, inline=True)
