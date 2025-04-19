@@ -19,7 +19,9 @@ tree = bot.tree
 @bot.event
 async def on_ready():
     print(f"🟢 Logged in as {bot.user}")
-    await tree.sync()
+    for guild in bot.guilds:
+        await tree.sync(guild=guild)
+        print(f"✅ Synced commands to: {guild.name} ({guild.id})")
 
 def parse_float(value):
     try:
