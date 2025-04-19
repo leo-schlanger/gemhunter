@@ -63,7 +63,7 @@ async def fetch_token_stats_gecko(gecko_id):
 
 async def fetch_token_stats_geckoterminal(symbol):
     try:
-        response = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated?limit=100", timeout=10)
+        response = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated?limit=1000", timeout=10)
         if response.status_code == 200:
             data = response.json().get("data", [])
             for token in data:
@@ -228,7 +228,7 @@ class GemHunter(app_commands.Group):
             msg = f"❓ {symbol.upper()}? No data found to react."
 
         await interaction.followup.send(content=msg)
-        
+
     @app_commands.command(name="find", description="Do a deep dive on a specific token")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def find(self, interaction: discord.Interaction, symbol: str):
