@@ -152,6 +152,7 @@ class GemHunter(app_commands.Group):
     @app_commands.command(name="react", description="Give a fun crypto reaction based on GT Score")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def react(self, interaction: discord.Interaction, symbol: str):
+        await interaction.response.defer(thinking=True)
         try:
             await interaction.response.defer(thinking=True)
         except discord.NotFound:
@@ -203,6 +204,7 @@ class GemHunter(app_commands.Group):
     @app_commands.command(name="find", description="Do a deep dive on a specific token")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def find(self, interaction: discord.Interaction, symbol: str):
+        await interaction.response.defer(thinking=True)
         try:
             await interaction.response.defer(thinking=True)
         except discord.NotFound:
