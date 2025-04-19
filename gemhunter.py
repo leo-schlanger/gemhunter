@@ -84,11 +84,17 @@ class GemHunter(app_commands.Group):
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def react(self, interaction: discord.Interaction, symbol: str):
         await interaction.response.defer(thinking=True)
-        token_list = requests.get("https://api.coingecko.com/api/v3/coins/list").json()
-        match = next((t for t in token_list if t['symbol'].lower() == symbol.lower()), None)
+        response = requests.get("https://api.coingecko.com/api/v3/coins/list")
+        if response.status_code != 200:
+            await interaction.followup.send("❌ Failed to fetch token list from CoinGecko.")
+            return
+
+        token_list = response.json()
+        match = next((t for t in token_list if t.get('symbol', '').lower() == symbol.lower()), None)
         if not match:
             await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found.")
             return
+
         token_data = requests.get(f"https://api.coingecko.com/api/v3/coins/{match['id']}").json()
         sentiment = token_data.get("sentiment_votes_up_percentage", 0)
 
@@ -105,11 +111,17 @@ class GemHunter(app_commands.Group):
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def find(self, interaction: discord.Interaction, symbol: str):
         await interaction.response.defer(thinking=True)
-        token_list = requests.get("https://api.coingecko.com/api/v3/coins/list").json()
-        match = next((t for t in token_list if t['symbol'].lower() == symbol.lower()), None)
+        response = requests.get("https://api.coingecko.com/api/v3/coins/list")
+        if response.status_code != 200:
+            await interaction.followup.send("❌ Failed to fetch token list.")
+            return
+
+        token_list = response.json()
+        match = next((t for t in token_list if t.get('symbol', '').lower() == symbol.lower()), None)
         if not match:
             await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found.")
             return
+
         token_data = requests.get(f"https://api.coingecko.com/api/v3/coins/{match['id']}").json()
 
         name = token_data.get("name", "Unknown")
