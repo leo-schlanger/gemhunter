@@ -49,9 +49,9 @@ async def fetch_token_stats(network, address):
         print(f"❌ Error fetching stats for {address}: {e}")
     return {}
 
-class GemHunterCog(commands.Cog):
-    def __init__(self, bot):
-        self.bot = bot
+class GemHunter(app_commands.Group):
+    def __init__(self):
+        super().__init__(name="gemhunter", description="The ultimate gem analyzer")
 
     @app_commands.command(name="matrix", description="List the 10 newest tokens with GT score and risk")
     async def matrix(self, interaction: discord.Interaction):
@@ -158,12 +158,8 @@ class GemHunterCog(commands.Cog):
 @bot.event
 async def on_ready():
     print(f"🟢 Logged in as {bot.user}")
+    bot.tree.add_command(GemHunter())
     await bot.tree.sync()
 
-async def setup():
-    bot.tree.add_command(GemHunterCog(bot))
-
 keep_alive()
-
-bot.tree.add_command(GemHunterCog(bot))
 bot.run(discord_gem_hunter)
