@@ -123,8 +123,11 @@ class GemHunter(app_commands.Group):
     @app_commands.describe(network="Filter by blockchain network (or use all)")
     @app_commands.choices(network=NETWORK_CHOICES)
     async def matrix(self, interaction: discord.Interaction, network: app_commands.Choice[str]):
-        await interaction.response.defer(thinking=True)
-        
+        try:
+            await interaction.response.defer(thinking=True)
+        except discord.errors.NotFound:
+            pass
+            
         try:
             data = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated?limit=100", timeout=10).json()
         except:
