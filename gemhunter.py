@@ -189,13 +189,22 @@ class GemHunter(app_commands.Group):
     @app_commands.command(name="react", description="Give a fun crypto reaction based on GT Score or price")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def react(self, interaction: discord.Interaction, symbol: str):
-        await interaction.response.defer(thinking=True)
+        deferred = False
+        try:
+            await interaction.response.defer(thinking=True)
+            deferred = True
+        except discord.errors.NotFound:
+            pass
+
         response = requests.get("https://api.coingecko.com/api/v3/coins/list")
         token_list = response.json() if response.status_code == 200 else []
         matches = [t for t in token_list if t.get("symbol", "").lower() == symbol.lower()]
 
         if not matches:
-            await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found.")
+            if not deferred:
+                await interaction.response.send_message(f"❌ Token '{symbol.upper()}' not found.")
+            else:
+                await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found.")
             return
 
         selected = matches[0] if len(matches) == 1 else await prompt_token_selection(interaction, symbol, matches)
@@ -232,21 +241,30 @@ class GemHunter(app_commands.Group):
     @app_commands.command(name="find", description="Do a deep dive on a specific token")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def find(self, interaction: discord.Interaction, symbol: str):
-        await interaction.response.defer(thinking=True)
+        deferred = False
+        try:
+            await interaction.response.defer(thinking=True)
+            deferred = True
+        except discord.errors.NotFound:
+            pass
 
         response = requests.get("https://api.coingecko.com/api/v3/coins/list")
         token_list = response.json() if response.status_code == 200 else []
         matches = [t for t in token_list if t.get("symbol", "").lower() == symbol.lower()]
 
         if not matches:
-            await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found.")
+            if not deferred:
+                await interaction.response.send_message(f"❌ Token '{symbol.upper()}' not found.")
+            else:
+                await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found.")
             return
 
         selected = matches[0] if len(matches) == 1 else await prompt_token_selection(interaction, symbol, matches)
         if not selected:
             return
 
-        gecko_data = await fetch_token_stats_gecko(selected['id'])
+        token_id = selected.get("id")
+        gecko_data = await fetch_token_stats_gecko(token_id)
         terminal_data = await fetch_token_stats_geckoterminal(symbol)
 
         embed = discord.Embed(title=f"🔎 Deep Dive — {gecko_data.get('name', 'Unknown')} ({symbol.upper()})", color=0x0099ff)
@@ -266,11 +284,18 @@ class GemHunter(app_commands.Group):
 
     @app_commands.command(name="help", description="Show all GemHunter commands")
     async def help(self, interaction: discord.Interaction):
+        try:
+            await interaction.response.defer(thinking=True)
+        except discord.errors.NotFound:
+            pass
+
         embed = discord.Embed(title="🤖 Welcome to GemHunter!", color=0x00ffcc)
         embed.add_field(name="/gemhunter matrix", value="List 10 newest tokens with filters", inline=False)
         embed.add_field(name="/gemhunter react <symbol>", value="Crypto reaction with GT Score or Price fallback", inline=False)
         embed.add_field(name="/gemhunter find <symbol>", value="Deep analysis of token using CoinGecko + GT Score", inline=False)
-        await interaction.response.send_message(embed=embed)
+        embed.add_field(name="/gemhunter help", value="Show all available GemHunter commands", inline=False)
+
+        await interaction.followup.send(embed=embed)
 
 bot.tree.add_command(GemHunter())
 
