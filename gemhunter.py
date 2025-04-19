@@ -109,9 +109,17 @@ class GemHunter(app_commands.Group):
             return
 
         response = requests.get("https://api.coingecko.com/api/v3/coins/list")
-        token_list = response.json()
-        if isinstance(token_list, dict):
-            token_list = token_list.get("coins", [])
+        try:
+            token_list = response.json()
+            if isinstance(token_list, list):
+                pass  # OK
+            elif isinstance(token_list, dict) and "coins" in token_list:
+                token_list = token_list["coins"]
+            else:
+                token_list = []
+        except Exception as e:
+            print(f"❌ Failed to parse token list: {e}")
+            token_list = []
         if isinstance(token_list, dict):
             token_list = token_list.get("coins", [])  # fallback if wrapped in 'coins'
         matches = [t for t in token_list if t.get("symbol", "").lower() == symbol.lower()]
