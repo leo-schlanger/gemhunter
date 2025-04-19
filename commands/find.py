@@ -32,18 +32,30 @@ class FindCommand(app_commands.Command):
                 token = result
 
             elif isinstance(result, list) and len(result) > 0:
-                exact_matches = [
-                    t for t in result
-                    if t.get("attributes", {}).get("symbol", "").lower() == symbol.lower()
-                ]
+                keyword = symbol.lower()
+                exact = []
+                partial = []
 
-                if len(exact_matches) == 1:
-                    token = exact_matches[0]
+                for t in result:
+                    attr = t.get("attributes", {})
+                    sym = attr.get("symbol", "").lower()
+                    name = attr.get("name", "").lower()
+
+                    if sym == keyword:
+                        exact.append(t)
+                    elif keyword in sym or keyword in name:
+                        partial.append(t)
+
+                options = exact + sorted(partial, key=lambda t: len(t["attributes"].get("symbol", "")))
+                options = options[:5]
+
+                if not options:
+                    await interaction.followup.send(f"❌ Nenhum token encontrado com símbolo `{symbol}`")
+                    return
+
+                if len(options) == 1:
+                    token = options[0]
                 else:
-                    options = exact_matches if exact_matches else result
-                    options.sort(key=lambda t: len(t["attributes"].get("symbol", "")))
-                    options = options[:5]  # garante até 5 primeiros
-
                     embed = discord.Embed(
                         title=f"🔍 Múltiplos tokens encontrados para '{symbol}'",
                         description="\n".join([
