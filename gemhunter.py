@@ -108,7 +108,12 @@ class GemHunter(app_commands.Group):
         except discord.NotFound:
             return
 
-        token_list = requests.get("https://api.coingecko.com/api/v3/coins/list").json()
+        response = requests.get("https://api.coingecko.com/api/v3/coins/list")
+        token_list = response.json()
+        if isinstance(token_list, dict):
+            token_list = token_list.get("coins", [])
+        if isinstance(token_list, dict):
+            token_list = token_list.get("coins", [])  # fallback if wrapped in 'coins'
         matches = [t for t in token_list if t.get("symbol", "").lower() == symbol.lower()]
 
         if not matches:
