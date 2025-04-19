@@ -78,12 +78,12 @@ async def fetch_token_stats_gecko(symbol):
         logging.error(f"[API] Error fetching CoinGecko data: {e}")
     return {}
 
-async def fetch_token_stats_geckoterminal(symbol):
+async def fetch_token_stats_geckoterminal(symbol, return_multiple=False):
     try:
         response = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated?limit=1000", timeout=10)
         if response.status_code != 200:
             logging.error(f"[API] Unexpected status code: {response.status_code}")
-            return {}
+            return [] if return_multiple else {}
 
         data = response.json().get("data", [])
         filtered_tokens = []
@@ -97,9 +97,13 @@ async def fetch_token_stats_geckoterminal(symbol):
 
         if not filtered_tokens:
             logging.warning(f"[API] No tokens matched symbol fragment: {symbol}")
-            return {}
+            return [] if return_multiple else {}
 
         filtered_tokens.sort(key=lambda x: (x[0] != symbol.lower(), len(x[0])))
+
+        if return_multiple:
+            return [token for _, token in filtered_tokens[:6]]
+
         best_match_token = filtered_tokens[0][1]
         attr = best_match_token.get("attributes", {})
         network = best_match_token.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
@@ -112,6 +116,11 @@ async def fetch_token_stats_geckoterminal(symbol):
             "address": address
         })
         return stats
+
+    except Exception as e:
+        logging.error(f"[API] Error fetching GeckoTerminal data: {e}")
+        return [] if return_multiple else {}
+
 
     except Exception as e:
         logging.error(f"[API] Error fetching GeckoTerminal data: {e}")
