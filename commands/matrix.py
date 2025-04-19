@@ -25,7 +25,7 @@ class MatrixCommand(app_commands.Command):
             logging.warning("[MATRIX] Failed to defer interaction")
 
         try:
-            response = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated?limit=100", timeout=10)
+            response = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated?limit=2400", timeout=10)
             data = response.json()
             tokens = data.get("data", [])
         except Exception as e:

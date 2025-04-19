@@ -78,44 +78,33 @@ async def fetch_token_stats_gecko(symbol):
         logging.error(f"[API] Error fetching CoinGecko data: {e}")
     return {}
 
-async def fetch_token_stats_geckoterminal(symbol, return_multiple=False, separate_matches=False):
+async def fetch_token_stats_geckoterminal(symbol):
     try:
         response = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated?limit=1000", timeout=10)
         if response.status_code != 200:
             logging.error(f"[API] Unexpected status code: {response.status_code}")
-            return [] if return_multiple or separate_matches else {}
+            return {}
 
         data = response.json().get("data", [])
-        matches_exact = []
-        matches_similar = []
+        filtered_tokens = []
 
         for token in data:
             attr = token.get("attributes", {})
             token_symbol = attr.get("symbol", "").lower()
-            if token_symbol == symbol.lower():
-                matches_exact.append(token)
-            elif symbol.lower() in token_symbol:
-                matches_similar.append(token)
 
-        matches_exact.sort(key=lambda t: len(t["attributes"].get("symbol", "")))
-        matches_similar.sort(key=lambda t: len(t["attributes"].get("symbol", "")))
+            if symbol.lower() in token_symbol:
+                filtered_tokens.append((token_symbol, token))
 
-        if separate_matches:
-            return matches_exact, matches_similar
-
-        if return_multiple:
-            return matches_exact + matches_similar[:6 - len(matches_exact)]
-
-        if matches_exact:
-            token = matches_exact[0]
-        elif matches_similar:
-            token = matches_similar[0]
-        else:
+        if not filtered_tokens:
+            logging.warning(f"[API] No tokens matched symbol fragment: {symbol}")
             return {}
 
-        attr = token.get("attributes", {})
-        network = token.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
+        filtered_tokens.sort(key=lambda x: (x[0] != symbol.lower(), len(x[0])))
+        best_match_token = filtered_tokens[0][1]
+        attr = best_match_token.get("attributes", {})
+        network = best_match_token.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
         address = attr.get("address")
+
         stats = await fetch_token_stats_terminal_by_address(network, address)
         stats.update({
             "gt_score": parse_float(attr.get("gt_score")),
@@ -126,7 +115,7 @@ async def fetch_token_stats_geckoterminal(symbol, return_multiple=False, separat
 
     except Exception as e:
         logging.error(f"[API] Error fetching GeckoTerminal data: {e}")
-        return [] if return_multiple or separate_matches else {}
+        return {}
 
 async def fetch_token_from_geckoterminal_by_symbol(symbol):
     try:

@@ -8,5 +8,9 @@ NETWORK_LABELS = {
     "optimism": "Optimism",
     "avax": "Avalanche",
     "fantom": "Fantom",
+    "sonic": "Sonic",
+    "sui": "Sui",
+    "berachain": "Berachain",
+    "monad": "Monad",
     "unknown": "Unknown"
 }
