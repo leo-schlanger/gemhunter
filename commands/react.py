@@ -1,54 +1,53 @@
 import discord
+import logging
 from discord import app_commands
-from utils.api import fetch_token_from_geckoterminal_by_symbol, fetch_token_stats_terminal_by_address, fetch_token_stats_gecko
+from utils.api import fetch_token_stats_geckoterminal, fetch_token_stats_gecko
 
 class ReactCommand(app_commands.Command):
     def __init__(self):
         super().__init__(
             name="react",
             description="Give a fun crypto reaction based on GT Score or price",
-            callback=self.react,
+            callback=self.react
         )
-        self._params = {
-            "symbol": app_commands.Parameter(description="Token symbol, e.g., sol")
-        }
 
+    @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def react(self, interaction: discord.Interaction, symbol: str):
+        logging.info(f"[REACT] Requested for symbol: {symbol} by {interaction.user.display_name}")
+
         try:
             await interaction.response.defer(thinking=True)
         except discord.errors.NotFound:
-            pass
+            logging.warning("[REACT] Failed to defer interaction")
 
-        token = await fetch_token_from_geckoterminal_by_symbol(symbol)
-        if not token:
-            await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found.")
+        try:
+            terminal_data = await fetch_token_stats_geckoterminal(symbol)
+            gecko_data = await fetch_token_stats_gecko(symbol)
+        except Exception as e:
+            logging.error(f"[REACT] Error fetching token data: {e}")
+            await interaction.followup.send(f"❌ Failed to fetch data for '{symbol.upper()}'")
             return
 
-        attr = token["attributes"]
-        address = attr.get("address")
-        network = token.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
-
-        terminal_data = await fetch_token_stats_terminal_by_address(network, address)
         gt_score = terminal_data.get("gt_score")
-
-        gecko_data = await fetch_token_stats_gecko(attr.get("name", "").lower().replace(" ", "-"))
         price = gecko_data.get("price")
+        sym = gecko_data.get("symbol", symbol.upper())
 
         if gt_score is not None:
             if gt_score >= 70:
-                msg = f"🧠 {symbol.upper()}? That's a f*cking blue chip, anon! Ape in!"
+                msg = f"🧠 {sym.upper()}? That's a f*cking blue chip, anon! Ape in!"
             elif gt_score >= 30:
-                msg = f"🧪 {symbol.upper()}? Mid-tier vibes... might moon, might rug."
+                msg = f"🧪 {sym.upper()}? Mid-tier vibes... might moon, might rug."
             else:
-                msg = f"❌ {symbol.upper()}? Total trash. Stay away."
+                msg = f"❌ {sym.upper()}? Total trash. Stay away."
         elif price is not None:
             if price >= 10:
-                msg = f"🧠 {symbol.upper()}? Big boy coin. Safer bet."
+                msg = f"🧠 {sym.upper()}? Big boy coin. Safer bet."
             elif price >= 0.1:
-                msg = f"🧪 {symbol.upper()}? Could go either way."
+                msg = f"🧪 {sym.upper()}? Could go either way."
             else:
-                msg = f"❌ {symbol.upper()}? Trash tier. Stay cautious."
+                msg = f"❌ {sym.upper()}? Trash tier. Stay cautious."
         else:
-            msg = f"❓ {symbol.upper()}? No data found to react."
+            msg = f"❓ {sym.upper()}? No data found to react."
 
         await interaction.followup.send(content=msg)
+        logging.info(f"[REACT] Responded to {symbol.upper()} with: {msg}")

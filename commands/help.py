@@ -1,4 +1,5 @@
 import discord
+import logging
 from discord import app_commands
 
 class HelpCommand(app_commands.Command):
@@ -10,10 +11,12 @@ class HelpCommand(app_commands.Command):
         )
 
     async def help(self, interaction: discord.Interaction):
+        logging.info(f"[HELP] Requested by {interaction.user.display_name}")
+
         try:
             await interaction.response.defer(thinking=True)
         except discord.errors.NotFound:
-            pass
+            logging.warning("[HELP] Failed to defer interaction")
 
         embed = discord.Embed(title="🤖 Welcome to GemHunter!", color=0x00ffcc)
         embed.add_field(name="/gemhunter matrix", value="List 10 newest tokens with filters", inline=False)
@@ -22,3 +25,4 @@ class HelpCommand(app_commands.Command):
         embed.add_field(name="/gemhunter help", value="Show all available GemHunter commands", inline=False)
 
         await interaction.followup.send(embed=embed)
+        logging.info("[HELP] Help message sent")
