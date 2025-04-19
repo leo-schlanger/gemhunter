@@ -190,7 +190,6 @@ class GemHunter(app_commands.Group):
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def react(self, interaction: discord.Interaction, symbol: str):
         await interaction.response.defer(thinking=True)
-
         response = requests.get("https://api.coingecko.com/api/v3/coins/list")
         token_list = response.json() if response.status_code == 200 else []
         matches = [t for t in token_list if t.get("symbol", "").lower() == symbol.lower()]
@@ -203,7 +202,8 @@ class GemHunter(app_commands.Group):
         if not selected:
             return
 
-        gecko_data = await fetch_token_stats_gecko(selected['id'])
+        token_id = selected.get("id")
+        gecko_data = await fetch_token_stats_gecko(token_id)
         terminal_data = await fetch_token_stats_geckoterminal(symbol)
 
         gt_score = terminal_data.get("gt_score")
@@ -228,12 +228,12 @@ class GemHunter(app_commands.Group):
             msg = f"❓ {symbol.upper()}? No data found to react."
 
         await interaction.followup.send(content=msg)
-
+        
     @app_commands.command(name="find", description="Do a deep dive on a specific token")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def find(self, interaction: discord.Interaction, symbol: str):
         await interaction.response.defer(thinking=True)
-        
+
         response = requests.get("https://api.coingecko.com/api/v3/coins/list")
         token_list = response.json() if response.status_code == 200 else []
         matches = [t for t in token_list if t.get("symbol", "").lower() == symbol.lower()]
