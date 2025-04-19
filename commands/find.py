@@ -2,6 +2,7 @@ import discord
 import logging
 from discord import app_commands
 from utils.views import TokenSelectionView
+from utils.views import TokenSelectionView
 from utils.api import (
     fetch_token_stats_geckoterminal,
     fetch_token_stats_terminal_by_address,
