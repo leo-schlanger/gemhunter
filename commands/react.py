@@ -45,6 +45,7 @@ class ReactCommand(app_commands.Command):
                     description="Selecione o símbolo correto abaixo:",
                     color=0xff9900
                 )
+
                 await interaction.followup.send(
                     embed=embed,
                     view=TokenSelectionView("react", token_matches, handle_selection)

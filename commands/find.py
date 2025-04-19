@@ -2,7 +2,6 @@ import discord
 import logging
 from discord import app_commands
 from utils.views import TokenSelectionView
-from utils.views import TokenSelectionView
 from utils.api import (
     fetch_token_stats_geckoterminal,
     fetch_token_stats_terminal_by_address,
@@ -28,36 +27,34 @@ class FindCommand(app_commands.Command):
             logging.warning("[FIND] Failed to defer interaction")
 
         try:
-            token_matches = await fetch_token_stats_geckoterminal(symbol, return_multiple=True)
+            matches_exact, matches_similar = await fetch_token_stats_geckoterminal(symbol, separate_matches=True)
 
-            if not token_matches:
+            if not matches_exact and not matches_similar:
                 await interaction.followup.send(f"❌ Nenhum token encontrado com símbolo `{symbol}`")
                 return
 
-            # Mostrar múltiplas opções se houver
-            if len(token_matches) > 1:
+            token_matches = matches_exact if matches_exact else matches_similar
+
+            if len(token_matches) == 1:
+                token = token_matches[0]
+            else:
+                async def handle_selection(inter: discord.Interaction, selected_symbol: str):
+                    await self.find(inter, selected_symbol)
+
                 embed = discord.Embed(
                     title=f"🔍 Múltiplos tokens encontrados para '{symbol}'",
-                    description="Selecione manualmente o símbolo correto abaixo:",
-                    color=0x0099ff
+                    description="Selecione abaixo o símbolo correto:",
+                    color=0x00aaff
                 )
-                for token in token_matches:
-                    attr = token.get("attributes", {})
-                    name = attr.get("name", "Unknown")
-                    symb = attr.get("symbol", "").upper()
-                    network = token.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
-                    embed.add_field(
-                        name=f"{name} ({symb})",
-                        value=f"Rede: {network.capitalize()} — Use `/gemhunter find {symb.lower()}`",
-                        inline=False
-                    )
-                await interaction.followup.send(embed=embed, view=TokenSelectionView('find', token_matches))
+
+                await interaction.followup.send(
+                    embed=embed,
+                    view=TokenSelectionView("find", token_matches, handle_selection)
+                )
                 return
 
-            # Se só tiver 1, continuar normalmente
-            only_token = token_matches[0]
-            attr = only_token.get("attributes", {})
-            network = only_token.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
+            attr = token.get("attributes", {})
+            network = token.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
             address = attr.get("address")
 
             terminal_data = await fetch_token_stats_terminal_by_address(network, address)
@@ -94,5 +91,5 @@ class FindCommand(app_commands.Command):
         if desc:
             embed.add_field(name="Description", value=desc[:1000], inline=False)
 
-        await interaction.followup.send(embed=embed, view=TokenSelectionView('find', token_matches))
+        await interaction.followup.send(embed=embed)
         logging.info(f"[FIND] Sent deep dive for {symbol.upper()} to {interaction.user.display_name}")
