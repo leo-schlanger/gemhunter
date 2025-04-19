@@ -1,11 +1,32 @@
 import requests
 import logging
+import time
 
 def parse_float(value):
     try:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+# Cache em memória
+_cached_token_list = None
+_last_fetch_time = 0
+
+def get_cached_token_list():
+    global _cached_token_list, _last_fetch_time
+    cache_duration = 3600  # 1 hora
+
+    if not _cached_token_list or (time.time() - _last_fetch_time) > cache_duration:
+        logging.info("[CACHE] Atualizando lista de tokens da CoinGecko")
+        response = requests.get("https://api.coingecko.com/api/v3/coins/list", timeout=10)
+        if response.status_code == 200:
+            _cached_token_list = response.json()
+            _last_fetch_time = time.time()
+        else:
+            logging.error(f"[CACHE] Falha ao buscar lista de tokens. Status: {response.status_code}")
+            return []
+
+    return _cached_token_list
 
 async def fetch_token_stats_terminal_by_address(network, address):
     url = f"https://api.geckoterminal.com/api/v2/networks/{network}/tokens/{address}"
@@ -23,13 +44,11 @@ async def fetch_token_stats_terminal_by_address(network, address):
 
 async def fetch_token_stats_gecko(symbol):
     try:
-        list_url = "https://api.coingecko.com/api/v3/coins/list"
-        list_response = requests.get(list_url, timeout=10)
-        if list_response.status_code != 200:
-            logging.error(f"[API] Failed to fetch token list: {list_response.status_code}")
+        token_list = get_cached_token_list()
+        if not token_list:
+            logging.error(f"[API] Token list is empty or failed.")
             return {}
 
-        token_list = list_response.json()
         filtered = [token for token in token_list if symbol.lower() in token["symbol"].lower()]
 
         if not filtered:
@@ -72,6 +91,7 @@ async def fetch_token_stats_geckoterminal(symbol):
         for token in data:
             attr = token.get("attributes", {})
             token_symbol = attr.get("symbol", "").lower()
+
             if symbol.lower() in token_symbol:
                 filtered_tokens.append((token_symbol, token))
 

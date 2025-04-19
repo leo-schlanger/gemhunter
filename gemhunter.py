@@ -8,6 +8,7 @@ from commands.help import HelpCommand
 from dotenv import load_dotenv
 from keep_alive import keep_alive
 import os
+from commands.group import GemHunterGroup
 
 # Carrega variáveis de ambiente
 keep_alive()
@@ -26,10 +27,7 @@ bot = commands.Bot(command_prefix="/", intents=intents)
 @bot.event
 async def on_ready():
     logging.info(f"🟢 Logged in as {bot.user}")
-    bot.tree.add_command(MatrixCommand())
-    bot.tree.add_command(ReactCommand())
-    bot.tree.add_command(FindCommand())
-    bot.tree.add_command(HelpCommand())
+    bot.tree.add_command(GemHunterGroup())
     await bot.tree.sync()
     logging.info("✅ Slash commands synced")
 
