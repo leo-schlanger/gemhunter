@@ -42,6 +42,20 @@ def parse_float(value):
     except (TypeError, ValueError):
         return None
 
+async def fetch_token_from_geckoterminal_by_symbol(symbol):
+    try:
+        response = requests.get("https://api.geckoterminal.com/api/v2/tokens/info_recently_updated?limit=1000", timeout=10)
+        if response.status_code == 200:
+            data = response.json().get("data", [])
+            for token in data:
+                attr = token.get("attributes", {})
+                if attr.get("symbol", "").lower() == symbol.lower():
+                    return token
+    except Exception as e:
+        print(f"❌ Error fetching GeckoTerminal token by symbol: {e}")
+    return None
+
+
 async def fetch_token_stats_gecko(gecko_id):
     url = f"https://api.coingecko.com/api/v3/coins/{gecko_id}"
     try:
@@ -193,38 +207,26 @@ class GemHunter(app_commands.Group):
     @app_commands.command(name="react", description="Give a fun crypto reaction based on GT Score or price")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def react(self, interaction: discord.Interaction, symbol: str):
-        deferred = False
         try:
             await interaction.response.defer(thinking=True)
-            deferred = True
         except discord.errors.NotFound:
             pass
 
-        response = requests.get("https://api.coingecko.com/api/v3/coins/list")
-        token_list = response.json() if response.status_code == 200 else []
-        matches = [
-            t for t in token_list
-            if symbol.lower() in t.get("symbol", "").lower()
-        ][:8]
-
-        if not matches:
-            if not deferred:
-                await interaction.response.send_message(f"❌ Token '{symbol.upper()}' not found.")
-            else:
-                await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found.")
+        token = await fetch_token_from_geckoterminal_by_symbol(symbol)
+        if not token:
+            await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found.")
             return
 
-        selected = matches[0] if len(matches) == 1 else await prompt_token_selection(interaction, symbol, matches)
-        if not selected:
-            return
+        attr = token["attributes"]
+        address = attr.get("address")
+        network = token.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
 
-        token_id = selected.get("id")
-        gecko_data = await fetch_token_stats_gecko(token_id)
-        terminal_data = await fetch_token_stats_geckoterminal(symbol)
-
+        terminal_data = await fetch_token_stats_terminal_by_address(network, address)
         gt_score = terminal_data.get("gt_score")
+        price = None
+
+        gecko_data = await fetch_token_stats_gecko(attr.get("name", "").lower().replace(" ", "-"))
         price = gecko_data.get("price")
-        symbol = gecko_data.get("symbol", symbol.upper())
 
         if gt_score is not None:
             if gt_score >= 70:
@@ -248,45 +250,35 @@ class GemHunter(app_commands.Group):
     @app_commands.command(name="find", description="Do a deep dive on a specific token")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def find(self, interaction: discord.Interaction, symbol: str):
-        deferred = False
         try:
             await interaction.response.defer(thinking=True)
-            deferred = True
         except discord.errors.NotFound:
             pass
 
-        response = requests.get("https://api.coingecko.com/api/v3/coins/list")
-        token_list = response.json() if response.status_code == 200 else []
-        matches = [
-            t for t in token_list 
-            if symbol.lower() in t.get("symbol", "").lower()
-        ][:8]
-
-        if not matches:
-            if not deferred:
-                await interaction.response.send_message(f"❌ Token '{symbol.upper()}' not found.")
-            else:
-                await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found.")
+        token = await fetch_token_from_geckoterminal_by_symbol(symbol)
+        if not token:
+            await interaction.followup.send(f"❌ Token '{symbol.upper()}' not found.")
             return
 
-        selected = matches[0] if len(matches) == 1 else await prompt_token_selection(interaction, symbol, matches)
-        if not selected:
-            return
+        attr = token.get("attributes", {})
+        relationships = token.get("relationships", {})
+        network_key = relationships.get("network", {}).get("data", {}).get("id", "unknown")
+        address = attr.get("address")
+        name = attr.get("name", "Unknown")
 
-        token_id = selected.get("id")
-        gecko_data = await fetch_token_stats_gecko(token_id)
-        terminal_data = await fetch_token_stats_geckoterminal(symbol)
+        terminal_data = await fetch_token_stats_terminal_by_address(network_key, address)
+        gecko_data = await fetch_token_stats_gecko(name.lower().replace(" ", "-"))
 
-        embed = discord.Embed(title=f"🔎 Deep Dive — {gecko_data.get('name', 'Unknown')} ({symbol.upper()})", color=0x0099ff)
+        embed = discord.Embed(title=f"🔎 Deep Dive — {name} ({symbol.upper()})", color=0x0099ff)
         embed.add_field(name="Price", value=f"${gecko_data.get('price', 0):.4f}" if gecko_data.get("price") else "N/A", inline=True)
         embed.add_field(name="GT Score", value=f"{terminal_data.get('gt_score', '❓')}" if terminal_data.get("gt_score") else "❓", inline=True)
         embed.add_field(name="FDV", value=f"${gecko_data.get('fdv', 0)/1_000_000:.1f}M" if gecko_data.get("fdv") else "N/A", inline=True)
         embed.add_field(name="24h Volume", value=f"${gecko_data.get('volume_24h', 0):,.0f}" if gecko_data.get("volume_24h") else "N/A", inline=True)
         embed.add_field(name="Liquidity", value=f"${terminal_data.get('liq', 0):,.0f}" if terminal_data.get("liq") else "N/A", inline=True)
-        embed.add_field(name="Network", value=terminal_data.get("network", "❓"), inline=True)
+        embed.add_field(name="Network", value=NETWORK_LABELS.get(network_key, network_key.capitalize()), inline=True)
         embed.add_field(name="Website", value=gecko_data.get("homepage", "N/A"), inline=False)
 
-        desc = gecko_data.get("description","en")
+        desc = gecko_data.get("description")
         if desc:
             embed.add_field(name="Description", value=desc[:1000], inline=False)
 
