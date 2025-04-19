@@ -83,7 +83,11 @@ class GemHunter(app_commands.Group):
     @app_commands.command(name="react", description="Give a fun crypto reaction based on CoinGecko sentiment")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def react(self, interaction: discord.Interaction, symbol: str):
-        await interaction.response.defer(thinking=True)
+        try:
+            await interaction.response.defer(thinking=True)
+        except discord.NotFound:
+            return
+
         response = requests.get("https://api.coingecko.com/api/v3/coins/list")
         if response.status_code != 200:
             await interaction.followup.send("❌ Failed to fetch token list from CoinGecko.")
@@ -96,9 +100,11 @@ class GemHunter(app_commands.Group):
             return
 
         token_data = requests.get(f"https://api.coingecko.com/api/v3/coins/{match['id']}").json()
-        sentiment = token_data.get("sentiment_votes_up_percentage", 0)
+        sentiment = token_data.get("sentiment_votes_up_percentage")
 
-        if sentiment >= 70:
+        if sentiment is None:
+            msg = f"❓ No sentiment data for {symbol.upper()} yet."
+        elif sentiment >= 70:
             msg = f"🧠 {symbol.upper()}? That's a f*cking blue chip, anon! Ape in!"
         elif sentiment >= 30:
             msg = f"🧪 {symbol.upper()}? Mid-tier vibes... might moon, might rug."
@@ -110,7 +116,11 @@ class GemHunter(app_commands.Group):
     @app_commands.command(name="find", description="Do a deep dive on a specific token")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def find(self, interaction: discord.Interaction, symbol: str):
-        await interaction.response.defer(thinking=True)
+        try:
+            await interaction.response.defer(thinking=True)
+        except discord.NotFound:
+            return
+
         response = requests.get("https://api.coingecko.com/api/v3/coins/list")
         if response.status_code != 200:
             await interaction.followup.send("❌ Failed to fetch token list.")
@@ -129,7 +139,7 @@ class GemHunter(app_commands.Group):
         homepage = token_data.get("links", {}).get("homepage", [None])[0]
         sentiment = token_data.get("sentiment_votes_up_percentage")
         emoji = "🧠" if sentiment and sentiment >= 70 else "🧪" if sentiment and sentiment >= 30 else "❌"
-        score_str = f"{emoji} {sentiment:.2f}%" if sentiment else "❓ Unknown"
+        score_str = f"{emoji} {sentiment:.2f}%" if sentiment is not None else "❓ Unknown"
 
         embed = discord.Embed(title=f"🔎 Deep Dive — {name} ({symbol.upper()})", color=0x0099ff)
         embed.add_field(name="Sentiment", value=score_str, inline=True)
