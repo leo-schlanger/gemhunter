@@ -99,7 +99,7 @@ async def fetch_token_stats_geckoterminal(symbol, return_multiple=False):
             logging.warning(f"[API] No tokens matched symbol fragment: {symbol}")
             return [] if return_multiple else {}
 
-        filtered_tokens.sort(key=lambda x: (x[0] != symbol.lower(), len(x[0])))
+        filtered_tokens.sort(key=lambda x: (len(x[0]), x[0] != symbol.lower()))
 
         if return_multiple:
             return [token for _, token in filtered_tokens[:6]]

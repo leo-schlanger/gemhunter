@@ -1,6 +1,7 @@
 import discord
 import logging
 from discord import app_commands
+from utils.views import TokenSelectionView
 from utils.api import (
     fetch_token_stats_geckoterminal,
     fetch_token_stats_terminal_by_address,
@@ -49,7 +50,7 @@ class FindCommand(app_commands.Command):
                         value=f"Rede: {network.capitalize()} — Use `/gemhunter find {symb.lower()}`",
                         inline=False
                     )
-                await interaction.followup.send(embed=embed)
+                await interaction.followup.send(embed=embed, view=TokenSelectionView('find', token_matches))
                 return
 
             # Se só tiver 1, continuar normalmente
@@ -92,5 +93,5 @@ class FindCommand(app_commands.Command):
         if desc:
             embed.add_field(name="Description", value=desc[:1000], inline=False)
 
-        await interaction.followup.send(embed=embed)
+        await interaction.followup.send(embed=embed, view=TokenSelectionView('find', token_matches))
         logging.info(f"[FIND] Sent deep dive for {symbol.upper()} to {interaction.user.display_name}")

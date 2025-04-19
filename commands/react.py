@@ -1,6 +1,7 @@
 import discord
 import logging
 from discord import app_commands
+from utils.views import TokenSelectionView
 from utils.api import (
     fetch_token_stats_geckoterminal,
     fetch_token_stats_terminal_by_address,
@@ -47,7 +48,7 @@ class ReactCommand(app_commands.Command):
                         value=f"Rede: {network.capitalize()} — Use `/gemhunter react {symb.lower()}`",
                         inline=False
                     )
-                await interaction.followup.send(embed=embed)
+                await interaction.followup.send(embed=embed, view=TokenSelectionView('react', token_matches))
                 return
 
             # único token
