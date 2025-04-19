@@ -1,42 +1,35 @@
 import requests
 import logging
 
-def fetch_recent_tokens_dexscreener(network="all"):
+def search_tokens_dexscreener(query: str):
     try:
-        url = "https://api.dexscreener.com/latest/dex/pairs"
+        url = f"https://api.dexscreener.com/latest/dex/search?q={query}"
         response = requests.get(url, timeout=10)
 
         if response.status_code != 200:
-            logging.error(f"[DEX] Failed to fetch recent pairs. HTTP {response.status_code}")
+            logging.error(f"[DEX] HTTP {response.status_code} searching for {query}")
             return []
 
         data = response.json().get("pairs", [])
-        seen = set()
-        results = []
+        keyword = query.lower()
 
+        seen = set()
+        tokens = []
         for pair in data:
             base = pair.get("baseToken", {})
-            quote = pair.get("quoteToken", {})
-            chain = pair.get("chainId", "")
             addr = base.get("address")
-            symb = base.get("symbol", "")
+            symb = base.get("symbol", "").upper()
 
             if not addr or (symb, addr) in seen:
                 continue
 
-            if network != "all" and chain != network:
-                continue
-
-            quote_sym = quote.get("symbol", "").lower()
-            if not any(stable in quote_sym for stable in ["usd", "usdt", "usdc"]):
-                continue
-
             seen.add((symb, addr))
-            results.append({
-                "symbol": symb.upper(),
+
+            tokens.append({
+                "symbol": symb,
                 "name": base.get("name", "Unknown"),
                 "address": addr,
-                "chain": chain,
+                "chain": pair.get("chainId", "unknown"),
                 "dex": pair.get("dexId", "unknown"),
                 "fdv": pair.get("fdv"),
                 "liquidity": pair.get("liquidity", {}),
@@ -44,11 +37,13 @@ def fetch_recent_tokens_dexscreener(network="all"):
                 "pair_url": pair.get("url", "")
             })
 
-            if len(results) >= 100:
-                break
+        # Ordenar: exatos primeiro, depois por menor símbolo
+        exact = [t for t in tokens if t["symbol"].lower() == keyword]
+        partial = [t for t in tokens if keyword in t["symbol"].lower() or keyword in t["name"].lower()]
+        partial = sorted(partial, key=lambda t: len(t["symbol"]))
 
-        return results
+        return exact + partial
 
     except Exception as e:
-        logging.error(f"[DEX] Error fetching recent tokens: {e}")
+        logging.error(f"[DEX] Error searching token: {e}")
         return []
