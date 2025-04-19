@@ -106,10 +106,12 @@ class GemHunter(app_commands.Group):
     @app_commands.command(name="react", description="Give a fun crypto reaction based on GT Score")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def react(self, interaction: discord.Interaction, symbol: str):
-        base_url = "https://api.geckoterminal.com/api/v2/tokens/info_recently_updated"
-        data = requests.get(base_url).json().get("data", [])
+        url = "https://api.geckoterminal.com/api/v2/tokens/info_recently_updated"
+        data = requests.get(url).json().get("data", [])
+
+        found = False
         for token in data:
-            attr = token["attributes"]
+            attr = token.get("attributes", {})
             if attr.get("symbol", "").lower() == symbol.lower():
                 score = parse_float(attr.get("gt_score"))
                 if score is None:
@@ -121,18 +123,22 @@ class GemHunter(app_commands.Group):
                 else:
                     msg = f"❌ {symbol.upper()}? Bro that's absolute sh*t. Get out before it rugs."
                 await interaction.response.send_message(msg)
-                return
-        await interaction.response.send_message(f"❌ Token '{symbol}' not found in recent listings.")
+                found = True
+                break
+
+        if not found:
+            await interaction.response.send_message(f"❌ Token '{symbol.upper()}' not found in recent tokens.")
 
     @app_commands.command(name="find", description="Do a deep dive on a specific token")
     @app_commands.describe(symbol="Token symbol, e.g., sol")
     async def find(self, interaction: discord.Interaction, symbol: str):
-        base_url = "https://api.geckoterminal.com/api/v2/tokens/info_recently_updated"
-        data = requests.get(base_url).json().get("data", [])
+        url = "https://api.geckoterminal.com/api/v2/tokens/info_recently_updated"
+        data = requests.get(url).json().get("data", [])
+
         for token in data:
-            attr = token["attributes"]
-            net = token.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
+            attr = token.get("attributes", {})
             if attr.get("symbol", "").lower() == symbol.lower():
+                net = token.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
                 stats = await fetch_token_stats(net, attr.get("address"))
                 name = stats.get("name", "Unknown")
                 score = stats.get("gt_score")
@@ -145,7 +151,8 @@ class GemHunter(app_commands.Group):
                 embed.add_field(name="Description", value=stats.get("desc", "No description found."), inline=False)
                 await interaction.response.send_message(embed=embed)
                 return
-        await interaction.response.send_message(f"❌ Token '{symbol}' not found in recent listings.")
+
+        await interaction.response.send_message(f"❌ Token '{symbol.upper()}' not found in recent tokens.")
 
     @app_commands.command(name="help", description="Show all GemHunter commands")
     async def help(self, interaction: discord.Interaction):
@@ -160,6 +167,8 @@ bot.tree.add_command(GemHunter())
 @bot.event
 async def on_ready():
     print(f"🟢 Logged in as {bot.user}")
-    await bot.tree.sync()
+    for guild in bot.guilds:
+        await bot.tree.sync(guild=guild)
+        print(f"✅ Synced commands to: {guild.name} ({guild.id})")
 
 bot.run(discord_gem_hunter)
