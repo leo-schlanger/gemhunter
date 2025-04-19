@@ -8,7 +8,7 @@ from commands.help import HelpCommand
 
 class GemHunterGroup(app_commands.Group):
     def __init__(self):
-        super().__init__(name="gemhunter", description="GemHunter bot commands")
+        super().__init__(name="gemhunter", description="The ultimate gem analyzer")
         self.add_command(MatrixCommand())
         self.add_command(FindCommand())
         self.add_command(ReactCommand())

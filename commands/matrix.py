@@ -8,9 +8,12 @@ from utils.network_labels import NETWORK_LABELS
 
 class MatrixCommand(app_commands.Group):
     def __init__(self):
-        super().__init__(name="gemhunter", description="The ultimate gem analyzer")
+        super().__init__(
+            name="matrix", 
+            description="List the 10 newest tokens with GT score and risk",
+            callback=self.matrix
+        )
 
-    @app_commands.command(name="matrix", description="List the 10 newest tokens with GT score and risk")
     @app_commands.describe(network="Filter by blockchain network (or use all)")
     @app_commands.choices(network=NETWORK_CHOICES)
     async def matrix(self, interaction: discord.Interaction, network: app_commands.Choice[str]):
