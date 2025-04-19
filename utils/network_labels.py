@@ -9,8 +9,8 @@ NETWORK_LABELS = {
     "avax": "Avalanche",
     "fantom": "Fantom",
     "sonic": "Sonic",
-    "sui": "Sui",
+    "sui-network": "Sui",
     "berachain": "Berachain",
-    "monad": "Monad",
+    "monad-testnet": "Monad",
     "unknown": "Unknown"
 }

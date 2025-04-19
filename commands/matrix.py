@@ -25,23 +25,40 @@ class MatrixCommand(app_commands.Command):
             logging.warning("[MATRIX] Failed to defer interaction")
 
         try:
+            # All networks
             if network.value == "all":
-                response = requests.get(
-                    "https://api.geckoterminal.com/api/v2/tokens/info_recently_updated?limit=2400",
-                    timeout=15
-                )
-                tokens = response.json().get("data", [])[:10]
+                url = "https://api.geckoterminal.com/api/v2/tokens/info_recently_updated?limit=2400"
             else:
-                response = requests.get(
-                    f"https://api.geckoterminal.com/api/v2/networks/{network.value}/tokens?page=1",
-                    timeout=15
-                )
-                tokens_raw = response.json().get("data", [])
-                # Ordenar por menor liquidez
-                tokens = sorted(tokens_raw, key=lambda t: parse_float(t.get("attributes", {}).get("total_reserve_in_usd")) or 0)[:10]
+                url = f"https://api.geckoterminal.com/api/v2/networks/{network.value}/tokens?page=1"
+
+            response = requests.get(url, timeout=15)
+
+            if response.status_code != 200:
+                logging.error(f"[MATRIX] Failed to fetch token data: HTTP {response.status_code}")
+                await interaction.followup.send(f"❌ Erro {response.status_code} ao buscar tokens da rede `{network.name}`.")
+                return
+
+            try:
+                data = response.json()
+            except Exception as e:
+                logging.error(f"[MATRIX] Invalid JSON response: {e}")
+                await interaction.followup.send(f"❌ Resposta inválida da API. Tente novamente mais tarde.")
+                return
+
+            tokens = data.get("data", [])
+            if not isinstance(tokens, list):
+                logging.error(f"[MATRIX] Unexpected format: {tokens}")
+                await interaction.followup.send(f"❌ Resposta inesperada da API. Tente novamente.")
+                return
+
+            if network.value == "all":
+                tokens = tokens[:10]
+            else:
+                tokens.sort(key=lambda t: parse_float(t.get("attributes", {}).get("total_reserve_in_usd")) or 0)
+                tokens = tokens[:10]
 
         except Exception as e:
-            logging.error(f"[MATRIX] Failed to fetch token data: {e}")
+            logging.error(f"[MATRIX] Exception: {e}")
             await interaction.followup.send("❌ Falha ao buscar os tokens mais recentes.")
             return
 

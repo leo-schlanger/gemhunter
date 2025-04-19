@@ -28,11 +28,9 @@ class FindCommand(app_commands.Command):
         try:
             result = await fetch_token_stats_geckoterminal(symbol, return_multiple=True)
 
-            # Caso seja dict único
             if isinstance(result, dict):
                 token = result
 
-            # Caso venha array
             elif isinstance(result, list) and len(result) > 0:
                 exact_matches = [
                     t for t in result
@@ -44,7 +42,7 @@ class FindCommand(app_commands.Command):
                 else:
                     options = exact_matches if exact_matches else result
                     options.sort(key=lambda t: len(t["attributes"].get("symbol", "")))
-                    options = options[:5]
+                    options = options[:5]  # garante até 5 primeiros
 
                     embed = discord.Embed(
                         title=f"🔍 Múltiplos tokens encontrados para '{symbol}'",
@@ -73,12 +71,10 @@ class FindCommand(app_commands.Command):
                     except:
                         await interaction.followup.send("⏱️ Tempo esgotado ou resposta inválida. Operação cancelada.")
                         return
-
             else:
                 await interaction.followup.send(f"❌ Nenhum token encontrado com símbolo `{symbol}`")
                 return
 
-            # CONTINUA O FLUXO NORMAL
             attr = token.get("attributes", {})
             network = token.get("relationships", {}).get("network", {}).get("data", {}).get("id", "unknown")
             address = attr.get("address")

@@ -9,10 +9,10 @@ NETWORK_CHOICES = [
     app_commands.Choice(name="bsc", value="bsc"),
     app_commands.Choice(name="ethereum", value="eth"),
     app_commands.Choice(name="fantom", value="fantom"),
-    app_commands.Choice(name="monad", value="monad"),
+    app_commands.Choice(name="monad", value="monad-testnet"),
     app_commands.Choice(name="optimism", value="optimism"),
     app_commands.Choice(name="polygon", value="polygon"),
     app_commands.Choice(name="solana", value="solana"),
     app_commands.Choice(name="sonic", value="sonic"),
-    app_commands.Choice(name="sui", value="sui"),
+    app_commands.Choice(name="sui", value="sui-network"),
 ]
