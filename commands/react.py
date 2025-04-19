@@ -2,12 +2,13 @@ import discord
 import logging
 from discord import app_commands
 from utils.dexscreener import search_tokens_dexscreener
+from views.token_paginator import TokenPaginatorView
 
 class ReactCommand(app_commands.Command):
     def __init__(self):
         super().__init__(
             name="react",
-            description="Give a fun crypto reaction based on real token risk (Dexscreener)",
+            description="Give a fun crypto reaction based on liquidity and FDV",
             callback=self.react
         )
 
@@ -20,65 +21,48 @@ class ReactCommand(app_commands.Command):
         except:
             pass
 
-        tokens = search_tokens_dexscreener(symbol)
+        tokens_raw = search_tokens_dexscreener(symbol)
+
+        # Deduplicar por symbol + name + address + chain
+        seen = set()
+        tokens = []
+        for t in tokens_raw:
+            key = (t["symbol"], t["name"], t["address"], t["chain"])
+            if key not in seen:
+                seen.add(key)
+                tokens.append(t)
+
         if not tokens:
             await interaction.followup.send(f"❌ No tokens found for `{symbol}`.")
             return
 
-        options = tokens[:5]
-        if len(options) == 1:
-            token = options[0]
-        else:
-            embed = discord.Embed(
-                title=f"🎯 Multiple tokens found for '{symbol}'",
-                description="\n".join([
-                    f"{i+1}. `{t['symbol']}` — {t['name']} ({t['chain']})"
-                    for i, t in enumerate(options)
-                ]),
-                color=0xff9900
-            )
-            embed.set_footer(text="Reply with a number (1–5) to react.")
+        # Se só um token, continua direto
+        if len(tokens) == 1:
+            return await self.continue_react(interaction, tokens[0])
 
-            await interaction.followup.send(embed=embed)
+        # Caso contrário, abre paginador
+        view = TokenPaginatorView(tokens, interaction, callback=self.continue_react)
+        await view.start()
 
-            def check(m):
-                return (
-                    m.author.id == interaction.user.id and
-                    m.channel == interaction.channel and
-                    m.content.isdigit() and
-                    1 <= int(m.content) <= len(options)
-                )
-
-            try:
-                msg = await interaction.client.wait_for("message", timeout=30.0, check=check)
-                token = options[int(msg.content) - 1]
-            except:
-                await interaction.followup.send("⏱️ Timed out or invalid input. Cancelled.")
-                return
-
+    async def continue_react(self, interaction: discord.Interaction, token):
         sym = token["symbol"].upper()
         liq = token.get("liquidity", {}).get("usd")
         fdv = token.get("fdv")
 
-        # Avaliação do risco
-        if liq is not None and fdv is not None:
-            if liq >= 1_000_000 or fdv >= 10_000_000:
-                emoji = "🧠"
-                reaction = f"{emoji} {sym}? That’s a f*cking blue chip, anon! Ape in!"
-            elif liq >= 10_000 or fdv >= 1_000_000:
-                emoji = "🧪"
-                reaction = f"{emoji} {sym}? Mid-tier vibes... might moon, might rug."
-            elif liq < 10_000 and fdv < 500_000:
-                emoji = "❌"
-                reaction = f"{emoji} {sym}? Total trash. Stay away."
-            else:
-                emoji = "❓"
-                reaction = f"{emoji} {sym}? No clear signal. DYOR."
+        # Risco baseado em liquidez e FDV (corrigido)
+        if liq is not None and liq >= 1_000_000 or fdv is not None and fdv >= 10_000_000:
+            emoji = "🧠"
+            msg = f"{emoji} {sym}? That’s a f*cking blue chip, anon! Ape in!"
+        elif liq is not None and liq >= 10_000 or fdv is not None and fdv >= 1_000_000:
+            emoji = "🧪"
+            msg = f"{emoji} {sym}? Mid-tier vibes... might moon, might rug."
+        elif liq is not None and liq < 10_000 and (fdv is None or fdv < 500_000):
+            emoji = "❌"
+            msg = f"{emoji} {sym}? Total trash. Stay away."
         else:
             emoji = "❓"
-            reaction = f"{emoji} {sym}? No data found to react."
+            msg = f"{emoji} {sym}? No data found to react."
 
-        # Legenda
         legend = (
             "\n\n**📘 Legend:**\n"
             "🧠 Liquidity ≥ $1M or FDV ≥ $10M → Blue Chip\n"
@@ -87,4 +71,4 @@ class ReactCommand(app_commands.Command):
             "❓ No data available"
         )
 
-        await interaction.followup.send(reaction + legend)
+        await interaction.followup.send(msg + legend)
