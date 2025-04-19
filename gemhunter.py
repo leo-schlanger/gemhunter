@@ -205,7 +205,7 @@ class GemHunter(app_commands.Group):
         matches = [
             t for t in token_list
             if symbol.lower() in t.get("symbol", "").lower()
-        ]
+        ][:8]
 
         if not matches:
             if not deferred:
@@ -260,7 +260,7 @@ class GemHunter(app_commands.Group):
         matches = [
             t for t in token_list 
             if symbol.lower() in t.get("symbol", "").lower()
-        ]
+        ][:8]
 
         if not matches:
             if not deferred:
