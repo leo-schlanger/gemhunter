@@ -13,26 +13,31 @@ def search_tokens_dexscreener(query: str):
         data = response.json().get("pairs", [])
         keyword = query.lower()
 
-        # Preparar tokens únicos por baseToken
         seen = set()
         tokens = []
         for pair in data:
-            token = pair.get("baseToken", {})
-            key = token.get("address")
-            if not key or key in seen:
+            base = pair.get("baseToken", {})
+            addr = base.get("address")
+            symb = base.get("symbol", "").upper()
+
+            if not addr or (symb, addr) in seen:
                 continue
-            seen.add(key)
+
+            seen.add((symb, addr))
 
             tokens.append({
-                "symbol": token.get("symbol", "--"),
-                "name": token.get("name", "Unknown"),
-                "address": token.get("address"),
+                "symbol": symb,
+                "name": base.get("name", "Unknown"),
+                "address": addr,
                 "chain": pair.get("chainId", "unknown"),
                 "dex": pair.get("dexId", "unknown"),
+                "fdv": pair.get("fdv"),
+                "liquidity": pair.get("liquidity", {}),
+                "volume": pair.get("volume", {}),
                 "pair_url": pair.get("url", "")
             })
 
-        # Ordenar: exato → menor símbolo
+        # Ordenar: exatos primeiro, depois por menor símbolo
         exact = [t for t in tokens if t["symbol"].lower() == keyword]
         partial = [t for t in tokens if keyword in t["symbol"].lower() or keyword in t["name"].lower()]
         partial = sorted(partial, key=lambda t: len(t["symbol"]))
