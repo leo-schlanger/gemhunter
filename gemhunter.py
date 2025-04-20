@@ -1,14 +1,14 @@
-import discord
 import logging
+import os
 from discord.ext import commands
+from dotenv import load_dotenv
+import discord
+from commands.find import FindCommand
+from commands.group import GemHunterGroup
+from commands.help import HelpCommand
 from commands.matrix import MatrixCommand
 from commands.react import ReactCommand
-from commands.find import FindCommand
-from commands.help import HelpCommand
-from dotenv import load_dotenv
 from keep_alive import keep_alive
-import os
-from commands.group import GemHunterGroup
 
 # Carrega variáveis de ambiente
 keep_alive()

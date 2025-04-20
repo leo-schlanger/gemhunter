@@ -1,5 +1,5 @@
-import requests
 import logging
+import requests
 
 def search_tokens_dexscreener(query: str):
     try:

@@ -1,5 +1,5 @@
-import requests
 import logging
+import requests
 from .gecko import parse_float
 
 async def fetch_token_stats_terminal_by_address(network, address):

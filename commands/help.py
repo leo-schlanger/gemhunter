@@ -1,5 +1,5 @@
-import discord
 from discord import app_commands
+import discord
 
 class HelpCommand(app_commands.Command):
     def __init__(self):

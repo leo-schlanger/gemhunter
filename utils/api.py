@@ -1,5 +1,5 @@
-import requests
 import logging
+import requests
 import time
 
 def parse_float(value):

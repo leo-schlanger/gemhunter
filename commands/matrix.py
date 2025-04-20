@@ -1,7 +1,7 @@
-import discord
 import logging
-import requests
 from discord import app_commands
+import discord
+import requests
 from config.choices import NETWORK_CHOICES
 from utils.api import fetch_token_stats_terminal_by_address, parse_float
 from utils.network_labels import NETWORK_LABELS

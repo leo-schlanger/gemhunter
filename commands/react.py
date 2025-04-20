@@ -1,6 +1,6 @@
-import discord
 import logging
 from discord import app_commands
+import discord
 from utils.dexscreener import search_tokens_dexscreener
 
 class ReactCommand(app_commands.Command):

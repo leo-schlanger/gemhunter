@@ -1,10 +1,8 @@
-import discord
 from discord import app_commands
-
-from commands.matrix import MatrixCommand
 from commands.find import FindCommand
-from commands.react import ReactCommand
 from commands.help import HelpCommand
+from commands.matrix import MatrixCommand
+from commands.react import ReactCommand
 
 class GemHunterGroup(app_commands.Group):
     def __init__(self):
