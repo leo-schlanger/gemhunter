@@ -21,7 +21,6 @@ class ReactCommand(app_commands.Command):
 
         tokens_raw = search_tokens_dexscreener(symbol)
 
-        # Deduplicar por symbol + name + address + chain
         seen = set()
         tokens = []
         for t in tokens_raw:
@@ -39,7 +38,6 @@ class ReactCommand(app_commands.Command):
         if len(tokens) == 1:
             return await self.continue_react(interaction, tokens[0])
 
-        # Menu simples com até 10 tokens
         embed = discord.Embed(
             title=f"🎯 Tokens found for '{symbol}'",
             description="\n".join([

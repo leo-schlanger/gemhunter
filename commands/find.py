@@ -22,7 +22,6 @@ class FindCommand(app_commands.Command):
 
         tokens_raw = search_tokens_dexscreener(symbol)
 
-        # Deduplicar por symbol + name + address + chain
         seen = set()
         tokens = []
         for t in tokens_raw:
@@ -40,7 +39,6 @@ class FindCommand(app_commands.Command):
         if len(tokens) == 1:
             return await self.continue_find(interaction, tokens[0])
 
-        # Menu para usuário escolher digitando número
         embed = discord.Embed(
             title=f"🔍 Tokens found for '{symbol}'",
             description="\n".join([
